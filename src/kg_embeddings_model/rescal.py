@@ -6,10 +6,10 @@ import torch.nn as nn
 from utilities.constants import EMBEDDING_DIM, MARGIN_LOSS, NUM_ENTITIES, NUM_RELATIONS
 
 
-class TransE(nn.Module):
+class RESCAL(nn.Module):
 
     def __init__(self, config):
-        super(TransE, self).__init__()
+        super(RESCAL, self).__init__()
         # A simple lookup table that stores embeddings of a fixed dictionary and size
 
         num_entities = config[NUM_ENTITIES]

@@ -6,10 +6,10 @@ import torch.nn as nn
 from utilities.constants import EMBEDDING_DIM, MARGIN_LOSS, NUM_ENTITIES, NUM_RELATIONS
 
 
-class TransE(nn.Module):
+class DistMult(nn.Module):
 
     def __init__(self, config):
-        super(TransE, self).__init__()
+        super(DistMult, self).__init__()
         # A simple lookup table that stores embeddings of a fixed dictionary and size
 
         num_entities = config[NUM_ENTITIES]
@@ -52,7 +52,7 @@ class TransE(nn.Module):
         """
         # TODO: - torch.abs(h_emb + r_emb - t_emb)
         # Compute score and transform result to 1D tensor
-        score = - torch.sum(h_emb * r_emb * t_emb, 1)   
+        score = - torch.sum(h_emb * r_emb * t_emb, 1)
 
         return score
 
