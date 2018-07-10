@@ -31,9 +31,7 @@ class DistMult(nn.Module):
         :return:
         """
 
-        # y == -1 indicates that second input to criterion should get a larger loss
-        # y = torch.Tensor([-1]).cuda()
-        y = torch.tensor([-1], dtype=torch.float, device=self.device)
+        y = torch.tensor([1], dtype=torch.float, device=self.device)
         pos_score = pos_score.unsqueeze(0)
         neg_score = neg_score.unsqueeze(0)
         pos_score = torch.tensor(pos_score, dtype=torch.float, device=self.device)
