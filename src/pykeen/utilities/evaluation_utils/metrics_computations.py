@@ -73,7 +73,7 @@ def _filter_corrupted_triples(corrupted_subject_based, corrupted_object_based, a
     :param all_pos_triples:
     :return:
     """
-    # TODO: Check
+    #
     mask = np.isin(element=corrupted_subject_based, test_elements=all_pos_triples) * 1.
 
     mask = np.sum(mask, axis=1)
