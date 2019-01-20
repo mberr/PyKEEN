@@ -5,32 +5,30 @@
 import json
 import os
 from collections import OrderedDict
+from typing import Iterable, List, Tuple
 
 import click
-from prompt_toolkit import prompt
 
 from pykeen.constants import (
     CONFIG_FILE_ERROR_MSG, CONFIG_FILE_PROMPT_MSG, CPU, GPU, HPO_MODE, ID_TO_KG_MODEL_MAPPING,
-    ID_TO_OPTIMIZER_MAPPING, KG_MODEL_TO_ID_MAPPING, OPTIMIZER_TO_ID_MAPPING, PYKEEN, TRAINING_MODE,
+    ID_TO_OPTIMIZER_MAPPING, IMPORTERS, KG_MODEL_TO_ID_MAPPING, OPTIMIZER_TO_ID_MAPPING, PYKEEN, TRAINING_MODE,
 )
-
-from pykeen.constants import IMPORTERS
 
 
 def _is_correct_format(path: str):
     return (
-        any(
-            path.startswith(prefix)
-            for prefix in IMPORTERS
-        )
-        or path.endswith('.tsv')
-        or path.endswith('.nt')
+            any(
+                path.startswith(prefix)
+                for prefix in IMPORTERS
+            )
+            or path.endswith('.tsv')
+            or path.endswith('.nt')
     )
 
 
 def get_input_path(prompt_msg, error_msg, is_dataset=False):
     while True:
-        user_input = prompt(prompt_msg, ).strip('"').strip("'")
+        user_input = click.prompt(prompt_msg).strip('"').strip("'")
 
         if not os.path.exists(os.path.dirname(user_input)):
             click.echo(error_msg)
@@ -49,8 +47,10 @@ def get_input_path(prompt_msg, error_msg, is_dataset=False):
 
 
 def select_keen_execution_mode(lib_name=PYKEEN):
-    r = click.confirm('Do you have hyper-parameters? If not, %s will be configured for hyper-parameter search.' % (lib_name),
-                      default=False)
+    r = click.confirm(
+        f'Do you have hyper-parameters? If not, {lib_name} will be configured for hyper-parameter search.',
+        default=False,
+    )
     return TRAINING_MODE if r else HPO_MODE
 
 
@@ -64,49 +64,32 @@ def select_embedding_model():
     available_models = list(KG_MODEL_TO_ID_MAPPING.keys())
 
     while True:
-        user_input = prompt('> Please select one of the options: ')
+        user_input = click.prompt('> Please select one of the options')
 
-        if user_input not in ids:
-            click.echo(
-                "Invalid input, please type in a number between %s and %s indicating the model id.\n"
-                "For example type %s to select the model %s and press enter" % (
-                    available_models[0], ids[0], ids[0], available_models[0]))
-            click.echo()
-        else:
+        if user_input in ids:
             return ID_TO_KG_MODEL_MAPPING[user_input]
+        click.echo(
+            f"Invalid input, please type in a number between {available_models[0]} and {ids[0]} indicating the "
+            f"model id.\n For example, type {ids[0]} to select the model {available_models[0]} and press enter."
+        )
 
 
 def select_integer_value(print_msg, prompt_msg, error_msg):
     click.echo(print_msg)
-
-    while True:
-        user_input = prompt(prompt_msg)
-
-        if user_input.isnumeric():
-            return int(user_input)
-
-        click.echo(error_msg)
+    return click.prompt(prompt_msg, type=int)
 
 
 def select_float_value(print_msg, prompt_msg, error_msg):
     click.echo(print_msg)
-
-    while True:
-        user_input = prompt(prompt_msg)
-        try:
-            float_value = float(user_input)
-            return float_value
-        except ValueError:
-            click.echo(error_msg)
+    return click.prompt(prompt_msg, type=float)
 
 
 def select_zero_one_float_value(print_msg, prompt_msg, error_msg):
     click.echo(print_msg)
 
     while True:
-        user_input = prompt(prompt_msg)
+        float_value = click.prompt(prompt_msg, type=float)
         try:
-            float_value = float(user_input)
             if not (0 <= float_value <= 1):
                 continue
             return float_value
@@ -124,7 +107,7 @@ def ask_for_test_set():
 
 def select_ratio_for_test_set():
     while True:
-        user_input = prompt('> Please select the ratio: ')
+        user_input = click.prompt('> Please select the ratio', type=float)
 
         try:
             ratio = float(user_input)
@@ -141,7 +124,7 @@ def select_preferred_device():
     click.secho(click.style("Current Step: Please specify the preferred device (GPU or CPU).", fg='blue'))
 
     while True:
-        user_input = prompt('> Please type \'GPU\' or \'CPU\': ').lower()
+        user_input = click.prompt('> Please type \'GPU\' or \'CPU\'').lower()
         if user_input == GPU or user_input == CPU:
             return user_input
         else:
@@ -175,7 +158,7 @@ def query_output_directory():
     click.echo()
 
     while True:
-        user_input = prompt('> Path to output directory:')
+        user_input = click.prompt('> Path to output directory:')
         if os.path.exists(os.path.dirname(user_input)):
             return user_input
         else:
@@ -189,35 +172,23 @@ def query_height_and_width_for_conv_e(embedding_dim):
     click.echo()
 
     while True:
-        height = prompt('> Height:')
+        height = click.prompt('> Height:', type=int)
+        width = click.prompt('> Width:', type=int)
+        if height * width == embedding_dim:
+            return height, width
 
-        if not height.isnumeric():
-            click.echo("Invalid input, please make sure that height is a positive integer.")
-            continue
-
-        width = prompt('> Width:')
-
-        if not width.isnumeric():
-            click.echo("Invalid input, please make sure that height is a positive integer.")
-            continue
-
-        if not (int(height) * int(width) == embedding_dim):
-            click.echo("Invalid input, height * width are not equal to \'%d\' (your specified embedding dimension).\n"
-                       "Please try again, and fulfill the constraint)" % embedding_dim)
-        else:
-            return int(height), int(width)
+        click.echo("Invalid input, height * width are not equal to \'%d\' (your specified embedding dimension).\n"
+                   "Please try again, and fulfill the constraint)" % embedding_dim)
 
 
 def query_kernel_param(depending_param, print_msg, prompt_msg, error_msg):
     click.echo(print_msg % depending_param)
 
     while True:
-        kernel_param = prompt(prompt_msg)
-
-        if not (kernel_param.isnumeric() and int(kernel_param) <= depending_param):
-            click.echo(error_msg % depending_param)
-        else:
-            return int(kernel_param)
+        kernel_param = click.prompt(prompt_msg, type=int)
+        if kernel_param <= depending_param:
+            return kernel_param
+        click.echo(error_msg % depending_param)
 
 
 def select_float_values(print_msg, prompt_msg, error_msg):
@@ -226,7 +197,7 @@ def select_float_values(print_msg, prompt_msg, error_msg):
     is_valid_input = False
 
     while not is_valid_input:
-        user_input = prompt(prompt_msg)
+        user_input = click.prompt(prompt_msg)
         user_input = user_input.split(',')
         is_valid_input = True
 
@@ -248,7 +219,7 @@ def select_zero_one_range_float_values(print_msg, prompt_msg, error_msg):
     is_valid_input = False
 
     while not is_valid_input:
-        user_input = prompt(prompt_msg)
+        user_input = click.prompt(prompt_msg)
         user_input = user_input.split(',')
         is_valid_input = True
 
@@ -261,7 +232,7 @@ def select_zero_one_range_float_values(print_msg, prompt_msg, error_msg):
                 break
 
             if 0. <= float_value <= 1.:
-                print("hey")
+                click.echo("hey")
                 float_values.append(float_value)
             else:
                 click.echo(error_msg)
@@ -277,17 +248,19 @@ def select_positive_integer_values(print_msg, prompt_msg, error_msg):
     is_valid_input = False
 
     while not is_valid_input:
-        user_input = prompt(prompt_msg)
+        user_input = click.prompt(prompt_msg)
         user_input = user_input.split(',')
         is_valid_input = True
 
         for integer in user_input:
-            if integer.isnumeric():
-                integers.append(int(integer))
-            else:
+            try:
+                integer = int(integer)
+            except ValueError:
                 click.echo(error_msg)
                 is_valid_input = False
                 break
+            else:
+                integers.append(integer)
 
     return integers
 
@@ -301,7 +274,7 @@ def select_optimizer():
     available_optimizers = list(OPTIMIZER_TO_ID_MAPPING.keys())
 
     while True:
-        user_input = prompt('> Please select one of the options: ')
+        user_input = click.prompt('> Please select one of the options')
 
         if user_input not in ids:
             click.echo(
@@ -313,46 +286,46 @@ def select_optimizer():
             return ID_TO_OPTIMIZER_MAPPING[user_input]
 
 
-def select_heights_and_widths(embedding_dimensions):
+def select_heights_and_widths(embedding_dimensions: Iterable[str]) -> Tuple[List[int], List[int]]:
     heights = []
     widths = []
 
     for embedding_dim in embedding_dimensions:
-        is_valid_input = False
-        while not is_valid_input:
-            print("Specify height for specified embedding dimension %d ." % embedding_dim)
-            height = prompt('> Height:')
+        while True:
+            click.echo(f'Specify the height for specified embedding dimension {embedding_dim}.')
+            height = click.prompt('> Height:', type=int)
 
-            print("Specify width for specified embedding dimension %d ." % embedding_dim)
-            width = prompt('> Width:')
+            click.echo(f'Specify the width for specified embedding dimension {embedding_dim}.')
+            width = click.prompt('> Width:', type=int)
 
-            if not (height.isnumeric() and width.isnumeric() and int(height) * int(width) == embedding_dim):
-                print("Invalid input, height and width must be positive integers, and height * width must equal the "
-                      " specified embedding dimension of \'%d\'." % embedding_dim)
-            else:
-                heights.append(int(height))
-                widths.append(int(width))
-                is_valid_input = True
-        print()
+            if int(height) * int(width) == embedding_dim:
+                heights.append(height)
+                widths.append(width)
+                break
+
+            click.secho(
+                f"Invalid input, height and width must be positive integers, and height * width must equal the "
+                f" specified embedding dimension of {embedding_dim}.",
+                fg='red',
+            )
+        click.echo()
 
     return heights, widths
 
 
-def select_kernel_sizes(depending_params, print_msg, prompt_msg, error_msg):
+def select_kernel_sizes(depending_params, print_msg, prompt_msg, error_msg) -> List[int]:
     kernel_params = []
-    print(print_msg)
+    click.echo(print_msg)
 
     for dep_param in depending_params:
-        is_valid_input = False
+        while True:
+            kernel_param = click.prompt(prompt_msg % dep_param, type=int)
 
-        while not is_valid_input:
-            kernel_param = prompt(prompt_msg % dep_param)
-
-            if not (kernel_param.isnumeric() and int(kernel_param) <= dep_param):
-                print(error_msg % dep_param)
-            else:
+            if kernel_param <= dep_param:
                 kernel_params.append(int(kernel_param))
-                is_valid_input = True
-        print()
+                break
+
+            click.secho(error_msg % dep_param, fg='red')
+        click.echo()
 
     return kernel_params
