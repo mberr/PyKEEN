@@ -53,7 +53,8 @@ class Results:
 
 
 def run(config: Dict,
-        output_directory: Optional[str] = None) -> Results:
+        output_directory: Optional[str] = None,
+        ) -> Results:
     """Train a KGE model.
 
     :param config: The configuration specifying the KGE model and its hyperparameters

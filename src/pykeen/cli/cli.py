@@ -4,7 +4,7 @@
 
 import json
 import os
-from typing import TextIO
+from typing import Optional, TextIO
 
 import click
 from click_default_group import DefaultGroup
@@ -22,13 +22,18 @@ def main():
 
 
 @main.command()
-@click.option('-c', '--config', type=click.File(), help='A PyKEEN JSON configuration file')
-def train(config):
+@click.option('-c', '--config', type=click.File(), help='Path to a PyKEEN JSON configuration file')
+@click.option('-o', '--output-directory', help='Path to a PyKEEN JSON configuration file',
+              type=click.Path(dir_okay=True, file_okay=False))
+def train(config: Optional[str], output_directory: str):
     """Train a KGE model."""
+    output_directory = os.path.expanduser(output_directory)
+    os.makedirs(output_directory, exist_ok=True)
+
     if config is not None:
         config = json.load(config)
     else:
-        config = prompt_config()
+        config = prompt_config(output_directory=output_directory)
 
     run(config)
 
