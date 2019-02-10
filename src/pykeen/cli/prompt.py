@@ -2,6 +2,8 @@
 
 """PyKEEN's command line interface."""
 
+import json
+import os
 from collections import OrderedDict
 from typing import Dict, Optional
 
@@ -135,12 +137,11 @@ def prompt_device(config: Dict) -> None:
     config[PREFERRED_DEVICE] = select_preferred_device()
 
 
-def prompt_output_directory(config: Dict) -> None:
-    """Prompt the user for the output directory."""
-    config[OUTPUT_DIREC] = query_output_directory()
-
-
-def prompt_config(*, config: Optional[Dict] = None, show_welcome: bool = True, do_prompt_training: bool = True) -> Dict:
+def prompt_config(*,
+                  config: Optional[Dict] = None,
+                  show_welcome: bool = True,
+                  do_prompt_training: bool = True,
+                  output_directory: Optional[str] = None) -> Dict:
     """Prompt the user for the run configuration."""
     if config is None:
         config = OrderedDict()
@@ -180,8 +181,14 @@ def prompt_config(*, config: Optional[Dict] = None, show_welcome: bool = True, d
     prompt_device(config)
     print_section_divider()
 
-    # Step 8: Define output directory
-    prompt_output_directory(config)
-    print_section_divider()
+    if not output_directory:
+        # Step 8: Define output directory
+        output_directory = query_output_directory()
+        print_section_divider()
+    config[OUTPUT_DIREC] = output_directory
+
+    # Save config into output directory
+    with open(os.path.join(output_directory, 'config.json'), 'w') as file:
+        json.dump(config, file, indent=2)
 
     return config
