@@ -2,12 +2,14 @@
 
 """Script to compute mean rank and hits@k."""
 
+import itertools as itt
 import logging
-import timeit
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Dict, Hashable, Iterable, List, Optional, Tuple
+from typing import Callable, Dict, Hashable, Iterable, Optional, Tuple
 
 import numpy as np
+import timeit
 import torch
 from tqdm import tqdm
 
@@ -15,7 +17,7 @@ from ...constants import EMOJI
 
 log = logging.getLogger(__name__)
 
-DEFAULT_HITS_AT_K = [1, 3, 5, 10]
+DEFAULT_HITS_AT_K = (1, 3, 5, 10)
 
 
 def _hash_triples(triples: Iterable[Hashable]) -> int:
@@ -23,25 +25,7 @@ def _hash_triples(triples: Iterable[Hashable]) -> int:
     return hash(tuple(triples))
 
 
-def update_hits_at_k(
-        hits_at_k_values: Dict[int, List[float]],
-        rank_of_positive_subject_based: int,
-        rank_of_positive_object_based: int
-) -> None:
-    """Update the Hits@K dictionary for two values."""
-    for k, values in hits_at_k_values.items():
-        if rank_of_positive_subject_based < k:
-            values.append(1.0)
-        else:
-            values.append(0.0)
-
-        if rank_of_positive_object_based < k:
-            values.append(1.0)
-        else:
-            values.append(0.0)
-
-
-def _create_corrupted_triples(triple, all_entities, device):
+def _create_corrupt_triples(triple, all_entities, device):
     candidate_entities_subject_based = np.delete(arr=all_entities, obj=triple[0:1])
     candidate_entities_subject_based = np.reshape(candidate_entities_subject_based, newshape=(-1, 1))
     candidate_entities_object_based = np.delete(arr=all_entities, obj=triple[2:3])
@@ -185,9 +169,7 @@ def compute_metric_results(
         mapped_test_triples,
         device,
         filter_neg_triples=False,
-        ks: Optional[List[int]] = None,
-        *,
-        use_tqdm: bool = True,
+        ks: Optional[Iterable[int]] = None,
 ) -> MetricResults:
     """Compute the metric results.
 
@@ -203,11 +185,6 @@ def compute_metric_results(
     """
     start = timeit.default_timer()
 
-    ranks: List[int] = []
-    hits_at_k_values = {
-        k: []
-        for k in (ks or DEFAULT_HITS_AT_K)
-    }
     kg_embedding_model = kg_embedding_model.eval()
     kg_embedding_model = kg_embedding_model.to(device)
 
@@ -220,42 +197,44 @@ def compute_metric_results(
         _compute_rank
     )
 
-    if use_tqdm:
-        mapped_test_triples = tqdm(mapped_test_triples, desc=f'{EMOJI} corrupting triples')
-    for pos_triple in mapped_test_triples:
-        corrupted_subject_based, corrupted_object_based = _create_corrupted_triples(
-            triple=pos_triple,
+    corrupt_pairs = [
+        (positive_triple, _create_corrupt_triples(
+            triple=positive_triple,
             all_entities=all_entities,
             device=device,
-        )
+        ))
+        for positive_triple in tqdm(mapped_test_triples, desc=f'{EMOJI} corrupting triples')
+    ]
 
-        rank_of_positive_subject_based, rank_of_positive_object_based = compute_rank_fct(
+    corrupt_pairs_it = tqdm(corrupt_pairs, desc=f'{EMOJI} computing ranks')
+    rank_of_positive_subject_based_object_based_pairs = [
+        compute_rank_fct(
             kg_embedding_model=kg_embedding_model,
-            pos_triple=pos_triple,
-            corrupted_subject_based=corrupted_subject_based,
-            corrupted_object_based=corrupted_object_based,
+            pos_triple=positive_triple,
+            corrupted_subject_based=corrupt_triples_subject_based,
+            corrupted_object_based=corrupt_triples_object_based,
             device=device,
             all_pos_triples_hashed=all_pos_triples_hashed,
         )
+        for positive_triple, (corrupt_triples_subject_based, corrupt_triples_object_based) in corrupt_pairs_it
+    ]
 
-        ranks.append(rank_of_positive_subject_based)
-        ranks.append(rank_of_positive_object_based)
-
-        # Compute hits@k for k in {1,3,5,10}
-        update_hits_at_k(
-            hits_at_k_values,
-            rank_of_positive_subject_based=rank_of_positive_subject_based,
-            rank_of_positive_object_based=rank_of_positive_object_based,
-        )
-
+    # MEAN RANK CALCULATION
+    ranks = list(itt.chain.from_iterable(rank_of_positive_subject_based_object_based_pairs))
     mean_rank = float(np.mean(ranks))
+
+    # HITS AT K CALCULATION(S)
+    hits_at_k_values = defaultdict(list)
+    for rank, k in itt.product(ranks, ks or DEFAULT_HITS_AT_K):
+        hits_at_k_values[k].append(rank < k)
+
     hits_at_k: Dict[int, float] = {
         k: np.mean(values)
         for k, values in hits_at_k_values.items()
     }
 
     stop = timeit.default_timer()
-    log.info("Evaluation took %.2fs seconds", stop - start)
+    log.info(f"Evaluation took {stop - start:.2f} seconds")
 
     return MetricResults(
         mean_rank=mean_rank,
