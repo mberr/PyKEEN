@@ -37,7 +37,7 @@ class ConvE(nn.Module):
         super().__init__()
 
         # Device selection
-        self.device = torch.device('cuda:0' if torch.cuda.is_available() and self.try_gpu else 'cpu')
+        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
         # Entity dimensions
         self.num_entities = config[NUM_ENTITIES]
@@ -133,7 +133,17 @@ class ConvE(nn.Module):
 
         return predictions
 
-    def forward(self, batch, labels):
+    def forward(self, pos_batch, neg_batch):
+        batch = torch.cat((pos_batch, neg_batch), dim=0)
+        positive_labels = torch.ones(pos_batch.shape[0], dtype=torch.float, device=self.device)
+        negative_labels = torch.zeros(neg_batch.shape[0], dtype=torch.float, device=self.device)
+        labels = torch.cat([positive_labels, negative_labels], dim=0)
+
+        perm = torch.randperm(labels.shape[0])
+
+        batch = batch[perm]
+        labels = labels[perm]
+
         batch_size = batch.shape[0]
 
         heads = batch[:, 0:1]
