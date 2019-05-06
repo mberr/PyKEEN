@@ -3,7 +3,7 @@
 """Implementation of structured model (SE)."""
 
 import logging
-from typing import Dict
+from typing import Dict, Optional
 
 import numpy as np
 import torch
@@ -12,7 +12,7 @@ from torch import nn
 
 from pykeen.constants import NORM_FOR_NORMALIZATION_OF_ENTITIES, SCORING_FUNCTION_NORM, SE_NAME
 from .base import BaseModule, slice_triples
-from .trans_e import TransEConfig
+
 
 __all__ = [
     'StructuredEmbedding',
@@ -34,13 +34,17 @@ class StructuredEmbedding(BaseModule):
     margin_ranking_loss_size_average: bool = True
     hyper_params = BaseModule.hyper_params + [SCORING_FUNCTION_NORM, NORM_FOR_NORMALIZATION_OF_ENTITIES]
 
-    def __init__(self, config: Dict) -> None:
-        super().__init__(config)
-        config = TransEConfig.from_dict(config)
+    def __init__(self, margin_loss, num_entities, num_relations, embedding_dim,
+                 scoring_function: Optional[int] = 1,
+                 normalization_of_entities: Optional[int] = 2,
+                 random_seed: Optional[int] = None,
+                 preferred_device: Optional[str] = 'cpu',
+                 **kwargs
+                 ) -> None:
+        super().__init__(margin_loss, num_entities, num_relations, embedding_dim, random_seed, preferred_device)
 
-        # Embeddings
-        self.l_p_norm_entities = config.lp_norm
-        self.scoring_fct_norm = config.scoring_function_norm
+        self.l_p_norm_entities = normalization_of_entities
+        self.scoring_fct_norm = scoring_function
 
         self.left_relation_embeddings = nn.Embedding(self.num_relations, self.embedding_dim * self.embedding_dim)
         self.right_relation_embeddings = nn.Embedding(self.num_relations, self.embedding_dim * self.embedding_dim)

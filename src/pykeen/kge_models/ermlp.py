@@ -2,7 +2,7 @@
 
 """Implementation of ERMLP."""
 
-from typing import Dict
+from typing import Dict, Optional
 
 import numpy as np
 import torch
@@ -27,8 +27,12 @@ class ERMLP(BaseModule):
     model_name = ERMLP_NAME
     margin_ranking_loss_size_average: bool = True
 
-    def __init__(self, config: Dict) -> None:
-        super().__init__(config)
+    def __init__(self, margin_loss, num_entities, num_relations, embedding_dim,
+                 random_seed: Optional[int] = None,
+                 preferred_device: Optional[str] = 'cpu',
+                 **kwargs
+                 ) -> None:
+        super().__init__(margin_loss, num_entities, num_relations, embedding_dim, random_seed, preferred_device)
 
         #: Embeddings for relations in the knowledge graph
         self.relation_embeddings = nn.Embedding(self.num_relations, self.embedding_dim)
@@ -44,7 +48,7 @@ class ERMLP(BaseModule):
         )
 
     def predict(self, triples):
-        # triples = torch.tensor(triples, dtype=torch.long, device=self.device)
+        triples = torch.tensor(triples, dtype=torch.long, device=self.device)
         scores = self._score_triples(triples)
         return scores.detach().cpu().numpy()
 

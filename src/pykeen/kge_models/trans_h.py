@@ -3,7 +3,7 @@
 """Implementation of TransH."""
 
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, Optional
 
 import numpy as np
 import torch
@@ -16,20 +16,6 @@ from pykeen.kge_models.base import BaseModule
 __all__ = [
     'TransH',
 ]
-
-
-@dataclass
-class TransHConfig:
-    soft_weight_constraint: str
-    scoring_function_norm: str
-
-    @classmethod
-    def from_dict(cls, config: Dict) -> 'TransHConfig':
-        """Generate an instance from a dictionary."""
-        return cls(
-            soft_weight_constraint=config[WEIGHT_SOFT_CONSTRAINT_TRANS_H],
-            scoring_function_norm=config[SCORING_FUNCTION_NORM],
-        )
 
 
 class TransH(BaseModule):
@@ -49,17 +35,22 @@ class TransH(BaseModule):
     margin_ranking_loss_size_average: bool = False
     hyper_params = BaseModule.hyper_params + [SCORING_FUNCTION_NORM, WEIGHT_SOFT_CONSTRAINT_TRANS_H]
 
-    def __init__(self, config: Dict) -> None:
-        super().__init__(config)
-        config = TransHConfig.from_dict(config)
+    def __init__(self, margin_loss, num_entities, num_relations, embedding_dim,
+                 weigthing_soft_constraint,
+                 scoring_function: Optional[int] = 1,
+                 random_seed: Optional[int] = None,
+                 preferred_device: Optional[str] = 'cpu',
+                 **kwargs
+                 ) -> None:
+        super().__init__(margin_loss, num_entities, num_relations, embedding_dim, random_seed, preferred_device)
 
         # A simple lookup table that stores embeddings of a fixed dictionary and size
         self.relation_embeddings = nn.Embedding(self.num_relations, self.embedding_dim)
         self.normal_vector_embeddings = nn.Embedding(self.num_relations, self.embedding_dim)
-        self.weighting_soft_constraint = config.soft_weight_constraint
+        self.weighting_soft_constraint = weigthing_soft_constraint
 
         self.epsilon = torch.nn.Parameter(torch.tensor(0.005, requires_grad=True))
-        self.scoring_fct_norm = config.scoring_function_norm
+        self.scoring_fct_norm = scoring_function
         # TODO: Add initialization
 
     def project_to_hyperplane(self, entity_embs, normal_vec_embs):

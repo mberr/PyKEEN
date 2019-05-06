@@ -2,7 +2,7 @@
 
 """Implementation of DistMult."""
 
-from typing import Dict
+from typing import Dict, Optional
 
 import numpy as np
 import torch
@@ -31,8 +31,11 @@ class DistMult(BaseModule):
     model_name = DISTMULT_NAME
     margin_ranking_loss_size_average: bool = True
 
-    def __init__(self, config: Dict) -> None:
-        super().__init__(config)
+    def __init__(self, margin_loss, num_entities, num_relations, embedding_dim,
+                 random_seed: Optional[int] = None,
+                 preferred_device: Optional[str] = 'cpu',
+                 **kwargs) -> None:
+        super().__init__(margin_loss, num_entities, num_relations, embedding_dim, random_seed, preferred_device)
 
         # Embeddings
         self.relation_embeddings = nn.Embedding(self.num_relations, self.embedding_dim)

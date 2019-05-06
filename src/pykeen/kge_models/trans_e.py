@@ -4,7 +4,7 @@
 
 import logging
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, Optional
 
 import numpy as np
 import torch
@@ -16,24 +16,9 @@ from pykeen.kge_models.base import BaseModule, slice_triples
 
 __all__ = [
     'TransE',
-    'TransEConfig',
 ]
 
 log = logging.getLogger(__name__)
-
-
-@dataclass
-class TransEConfig:
-    lp_norm: str
-    scoring_function_norm: str
-
-    @classmethod
-    def from_dict(cls, config: Dict) -> 'TransEConfig':
-        """Generate an instance from a dictionary."""
-        return cls(
-            lp_norm=config[NORM_FOR_NORMALIZATION_OF_ENTITIES],
-            scoring_function_norm=config[SCORING_FUNCTION_NORM],
-        )
 
 
 class TransE(BaseModule):
@@ -54,13 +39,19 @@ class TransE(BaseModule):
     margin_ranking_loss_size_average: bool = True
     hyper_params = BaseModule.hyper_params + [SCORING_FUNCTION_NORM, NORM_FOR_NORMALIZATION_OF_ENTITIES]
 
-    def __init__(self, config: Dict) -> None:
-        super().__init__(config)
-        config = TransEConfig.from_dict(config)
+    def __init__(self, margin_loss, num_entities, num_relations, embedding_dim,
+                 scoring_function: Optional[int] = 1,
+                 normalization_of_entities: Optional[int] = 2,
+                 random_seed: Optional[int] = None,
+                 preferred_device: Optional[str] = 'cpu',
+                 **kwargs
+                 ) -> None:
+        super().__init__(margin_loss, num_entities, num_relations, embedding_dim, random_seed, preferred_device)
+
+        self.l_p_norm_entities = normalization_of_entities
+        self.scoring_fct_norm = scoring_function
 
         # Embeddings
-        self.l_p_norm_entities = config.lp_norm
-        self.scoring_fct_norm = config.scoring_function_norm
         self.relation_embeddings = nn.Embedding(self.num_relations, self.embedding_dim)
 
         self._initialize()
@@ -83,6 +74,7 @@ class TransE(BaseModule):
             norms.view(self.num_relations, 1).expand_as(self.relation_embeddings.weight))
 
     def predict(self, triples):
+        triples = torch.tensor(triples, dtype=torch.long, device=self.device)
         scores = self._score_triples(triples)
         return scores.detach().cpu().numpy()
 

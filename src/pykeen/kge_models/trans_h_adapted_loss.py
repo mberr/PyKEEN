@@ -2,39 +2,41 @@
 
 """Implementation of TransH."""
 
+from typing import Optional
+
 import numpy as np
 import torch
 import torch.autograd
 import torch.nn as nn
 
 import pykeen.constants as pkc
+from pykeen.kge_models.base import BaseModule, slice_triples
 
 __all__ = ['TransH']
 
 
-class TransH(nn.Module):
+class TransH(BaseModule):
 
-    def __init__(self, config):
-        super(TransH, self).__init__()
-        self.model_name = pkc.TRANS_H_NAME
-        self.device = torch.device(
-            'cuda:0' if torch.cuda.is_available() and config[pkc.PREFERRED_DEVICE] == pkc.GPU else pkc.CPU)
-        self.use_cuda = True if torch.cuda.is_available() and config[pkc.PREFERRED_DEVICE] == pkc.GPU else False
-        self.num_entities = config[pkc.NUM_ENTITIES]
-        self.num_relations = config[pkc.NUM_RELATIONS]
-        self.embedding_dim = config[pkc.EMBEDDING_DIM]
-        self.config = config
-        margin_loss = config[pkc.MARGIN_LOSS]
+    model_name = pkc.TRANS_H_NAME
+
+    def __init__(self, margin_loss, num_entities, num_relations, embedding_dim,
+                 weigthing_soft_constraint,
+                 scoring_function: Optional[int] = 1,
+                 random_seed: Optional[int] = None,
+                 preferred_device: Optional[str] = 'cpu',
+                 **kwargs):
+        super().__init__(margin_loss, num_entities, num_relations, embedding_dim, random_seed, preferred_device)
+
+
+        self.weighting_soft_constraint = weigthing_soft_constraint
+        self.criterion = nn.MarginRankingLoss(margin=self.margin_loss, size_average=False)
+        self.epsilon = 0.05
+        self.scoring_fct_norm = scoring_function
 
         # A simple lookup table that stores embeddings of a fixed dictionary and size
         self.entity_embeddings = nn.Embedding(self.num_entities, self.embedding_dim)
         self.relation_embeddings = nn.Embedding(self.num_relations, self.embedding_dim)
         self.normal_vector_embeddings = nn.Embedding(self.num_relations, self.embedding_dim)
-        self.margin_loss = margin_loss
-        self.weightning_soft_constraint = config[pkc.WEIGHT_SOFT_CONSTRAINT_TRANS_H]
-        self.criterion = nn.MarginRankingLoss(margin=self.margin_loss, size_average=False)
-        self.epsilon = 0.05
-        self.scoring_fct_norm = config[pkc.SCORING_FUNCTION_NORM]
 
     def _initialize(self):
         # TODO: Add initialization

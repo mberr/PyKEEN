@@ -39,4 +39,4 @@ def get_kge_model(config: Dict) -> Module:
     if kge_model_cls is None:
         raise ValueError(f'Invalid KGE model name: {kge_model_name}')
 
-    return kge_model_cls(config=config)
+    return kge_model_cls(**config)

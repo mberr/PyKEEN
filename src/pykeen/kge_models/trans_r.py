@@ -2,7 +2,7 @@
 
 """Implementation of TransR."""
 
-from typing import Dict
+from typing import Dict, Optional
 
 import numpy as np
 import torch
@@ -11,7 +11,6 @@ from torch import nn
 
 from pykeen.constants import RELATION_EMBEDDING_DIM, SCORING_FUNCTION_NORM, TRANS_R_NAME
 from .base import BaseModule
-from .trans_d import TransDConfig
 
 __all__ = ['TransR']
 
@@ -47,19 +46,24 @@ class TransR(BaseModule):
     relation_embedding_norm_type = 2
     hyper_params = BaseModule.hyper_params + [RELATION_EMBEDDING_DIM, SCORING_FUNCTION_NORM]
 
-    def __init__(self, config: Dict) -> None:
-        super().__init__(config)
-        config = TransDConfig.from_dict(config)
+    def __init__(self, margin_loss, num_entities, num_relations, embedding_dim,
+                 relation_embedding_dim,
+                 scoring_function: Optional[int] = 1,
+                 random_seed: Optional[int] = None,
+                 preferred_device: Optional[str] = 'cpu',
+                 **kwargs) -> None:
+        super().__init__(margin_loss, num_entities, num_relations, embedding_dim, random_seed, preferred_device)
+
+        self.scoring_fct_norm = scoring_function
 
         # Embeddings
-        self.relation_embedding_dim = config.relation_embedding_dim
+        self.relation_embedding_dim = relation_embedding_dim
 
         # max_norm = 1 according to the paper
         self.relation_embeddings = nn.Embedding(self.num_relations, self.relation_embedding_dim,
                                                 norm_type=self.relation_embedding_norm_type,
                                                 max_norm=self.relation_embedding_max_norm)
         self.projection_matrix_embs = nn.Embedding(self.num_relations, self.relation_embedding_dim * self.embedding_dim)
-        self.scoring_fct_norm = config.scoring_function_norm
 
         self._initialize()
 

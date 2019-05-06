@@ -22,6 +22,7 @@ from pykeen.utilities.triples_creation_utils import create_mapped_triples, creat
 __all__ = [
     'Pipeline',
     'load_data',
+    'prepare_data'
 ]
 
 log = logging.getLogger(__name__)
@@ -83,6 +84,7 @@ class Pipeline(object):
             self.config[pkc.NUM_ENTITIES] = len(self.entity_label_to_id)
             self.config[pkc.NUM_RELATIONS] = len(self.relation_label_to_id)
             self.config[pkc.PREFERRED_DEVICE] = pkc.CPU if self.device_name == pkc.CPU else pkc.GPU
+
             if self.seed is not None:
                 torch.manual_seed(self.seed)
 
@@ -93,18 +95,17 @@ class Pipeline(object):
             learning_rate = self.config[pkc.LEARNING_RATE]
 
             log.info("-------------Train KG Embeddings-------------")
-            trained_model, loss_per_epoch = train_kge_model(
-                kge_model=kge_model,
+            loss_per_epoch = kge_model.fit(
                 all_entities=all_entities,
+                pos_triples=mapped_pos_train_triples,
                 learning_rate=learning_rate,
                 num_epochs=num_epochs,
                 batch_size=batch_size,
-                pos_triples=mapped_pos_train_triples,
-                device=self.device,
-                seed=self.seed,
             )
+            trained_model = kge_model
 
             params = self.config
+
 
             if self.is_evaluation_required:
                 log.info("-------------Start Evaluation-------------")
@@ -264,3 +265,33 @@ def _make_results(
     results[pkc.RELATION_TO_ID] = rel_to_id
     results[pkc.FINAL_CONFIGURATION] = params
     return results
+
+# These functions allow the direct import for the new API
+
+def prepare_data(data_path: str) -> Mapping:
+    """Run this pipeline."""
+
+    triples, entity_label_to_id, relation_label_to_id = _get_train_triples(data_path)
+
+    all_entities = np.array(list(entity_label_to_id.values()))
+
+    # Initialize KG embedding model
+    num_entities = len(entity_label_to_id)
+    num_relations = len(relation_label_to_id)
+
+    return triples, entity_label_to_id, relation_label_to_id, all_entities, num_entities, num_relations
+
+
+
+def _get_train_triples(data_path: str):
+    train_pos = load_data(data_path)
+
+    entity_label_to_id, relation_label_to_id = create_mappings(triples=train_pos)
+
+    mapped_pos_train_triples, _, _ = create_mapped_triples(
+        triples=train_pos,
+        entity_label_to_id=entity_label_to_id,
+        relation_label_to_id=relation_label_to_id,
+    )
+
+    return mapped_pos_train_triples, entity_label_to_id, relation_label_to_id
