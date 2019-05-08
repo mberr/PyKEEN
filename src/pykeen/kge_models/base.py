@@ -2,15 +2,14 @@
 
 """Utilities for getting and initializing KGE models."""
 
-from dataclasses import dataclass
-from typing import Dict, Optional, Union
-import numpy as np
+from typing import Any, List, Mapping, Optional
+
 import logging
 import timeit
 from tqdm import trange
-from typing import Any, List, Mapping, Optional, Tuple
 import random
 
+import numpy as np
 import torch
 from torch import nn
 import torch.optim as optim
@@ -111,6 +110,12 @@ class BaseModule(nn.Module):
         self._get_device('gpu')
         self.to(self.device)
         torch.cuda.empty_cache()
+
+    def _compute_loss(self, positive_scores: torch.Tensor, negative_scores: torch.Tensor) -> torch.Tensor:
+        y = torch.FloatTensor([-1], device=self.device)
+        y = y.repeat((positive_scores.shape[0], -1))
+        loss = self.criterion(positive_scores, negative_scores, y)
+        return loss
 
     def fit(
             self,
