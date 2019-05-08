@@ -11,6 +11,7 @@ from torch.nn import Parameter, functional as F
 from torch.nn.init import xavier_normal
 from pykeen.kge_models.base import BaseModule, slice_triples
 from typing import Dict, Optional
+import torch.optim as optim
 
 from pykeen.constants import (
     CONV_E_FEATURE_MAP_DROPOUT, CONV_E_HEIGHT, CONV_E_INPUT_CHANNELS, CONV_E_INPUT_DROPOUT, CONV_E_KERNEL_HEIGHT,
@@ -35,11 +36,15 @@ class ConvE(BaseModule):
                     CONV_E_KERNEL_HEIGHT, CONV_E_KERNEL_WIDTH, CONV_E_INPUT_DROPOUT, CONV_E_FEATURE_MAP_DROPOUT,
                     CONV_E_OUTPUT_DROPOUT, MARGIN_LOSS, LEARNING_RATE]
 
-    def __init__(self, margin_loss, num_entities, num_relations, embedding_dim,
+    def __init__(self,
+                 margin_loss: float,
+                 num_entities: int,
+                 num_relations: int,
+                 embedding_dim: int,
                  ConvE_input_channels, ConvE_output_channels, ConvE_height, ConvE_width, ConvE_kernel_height,
                  ConvE_kernel_width, conv_e_input_dropout, conv_e_output_dropout, conv_e_feature_map_dropout,
                  random_seed: Optional[int] = None,
-                 preferred_device: Optional[str] = None,
+                 preferred_device: str = 'cpu',
                  **kwargs
                  ) -> None:
         super().__init__(margin_loss, num_entities, num_relations, embedding_dim, random_seed, preferred_device)
@@ -76,6 +81,9 @@ class ConvE(BaseModule):
                           (2 * self.ConvE_height - ConvE_kernel_height + 1) * \
                           (self.ConvE_width - ConvE_kernel_width + 1)
         self.fc = torch.nn.Linear(num_in_features, self.embedding_dim)
+
+        # Default optimizer for ConvE
+        self.default_optimizer = optim.Adam
 
     def init(self):  # FIXME is this ever called?
         xavier_normal(self.entity_embeddings.weight.data)

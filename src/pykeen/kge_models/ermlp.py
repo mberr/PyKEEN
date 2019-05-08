@@ -27,9 +27,13 @@ class ERMLP(BaseModule):
     model_name = ERMLP_NAME
     margin_ranking_loss_size_average: bool = True
 
-    def __init__(self, margin_loss, num_entities, num_relations, embedding_dim,
+    def __init__(self,
+                 margin_loss: float,
+                 num_entities: int,
+                 num_relations: int,
+                 embedding_dim: int,
                  random_seed: Optional[int] = None,
-                 preferred_device: Optional[str] = 'cpu',
+                 preferred_device: str = 'cpu',
                  **kwargs
                  ) -> None:
         super().__init__(margin_loss, num_entities, num_relations, embedding_dim, random_seed, preferred_device)

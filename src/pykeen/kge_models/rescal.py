@@ -32,10 +32,14 @@ class RESCAL(BaseModule):
     margin_ranking_loss_size_average: bool = True
     hyper_params = BaseModule.hyper_params + [SCORING_FUNCTION_NORM]
 
-    def __init__(self, margin_loss, num_entities, num_relations, embedding_dim,
+    def __init__(self,
+                 margin_loss: float,
+                 num_entities: int,
+                 num_relations: int,
+                 embedding_dim: int,
                  scoring_function: Optional[int] = 1,
                  random_seed: Optional[int] = None,
-                 preferred_device: Optional[str] = 'cpu',
+                 preferred_device: str = 'cpu',
                  **kwargs
                  ) -> None:
         super().__init__(margin_loss, num_entities, num_relations, embedding_dim, random_seed, preferred_device)
