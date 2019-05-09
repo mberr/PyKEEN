@@ -140,33 +140,17 @@ def _compute_rank(
     scores_of_corrupted_subjects = kg_embedding_model.predict(corrupted_subject_based)
     scores_of_corrupted_objects = kg_embedding_model.predict(corrupted_object_based)
 
-    pos_triple = np.array(pos_triple)
-    pos_triple = np.expand_dims(a=pos_triple, axis=0)
-    pos_triple = torch.tensor(pos_triple, dtype=torch.long, device=device)
+    score_of_positive = kg_embedding_model.predict([pos_triple])
 
-    score_of_positive = kg_embedding_model.predict(pos_triple)
+    rank_of_positive_subject_based = scores_of_corrupted_subjects.size - \
+                                     np.greater(scores_of_corrupted_subjects, score_of_positive).sum()
 
-    scores_subject_based = np.append(arr=scores_of_corrupted_subjects, values=score_of_positive)
-    indice_of_pos_subject_based = scores_subject_based.size - 1
-
-    scores_object_based = np.append(arr=scores_of_corrupted_objects, values=score_of_positive)
-    indice_of_pos_object_based = scores_object_based.size - 1
-
-    _, sorted_score_indices_subject_based = torch.sort(torch.tensor(scores_subject_based, dtype=torch.float),
-                                                       descending=False)
-    sorted_score_indices_subject_based = sorted_score_indices_subject_based.cpu().numpy()
-
-    _, sorted_score_indices_object_based = torch.sort(torch.tensor(scores_object_based, dtype=torch.float),
-                                                      descending=False)
-    sorted_score_indices_object_based = sorted_score_indices_object_based.cpu().numpy()
-
-    # Get index of first occurrence that fulfills the condition
-    rank_of_positive_subject_based = np.where(sorted_score_indices_subject_based == indice_of_pos_subject_based)[0][0]
-    rank_of_positive_object_based = np.where(sorted_score_indices_object_based == indice_of_pos_object_based)[0][0]
+    rank_of_positive_object_based = scores_of_corrupted_objects.size - \
+                                    np.greater(scores_of_corrupted_objects, score_of_positive).sum()
 
     return (
-        rank_of_positive_subject_based,
-        rank_of_positive_object_based,
+        rank_of_positive_subject_based + 1,
+        rank_of_positive_object_based + 1,
     )
 
 
