@@ -23,6 +23,7 @@ class TestTrainingModeForConvE(BaseTestTrainingMode):
     config[pkc.CONV_E_INPUT_DROPOUT] = 0.2
     config[pkc.CONV_E_FEATURE_MAP_DROPOUT] = 0.5
     config[pkc.CONV_E_OUTPUT_DROPOUT] = 0.5
+    config[pkc.MARGIN_LOSS] = 1
 
     def test_training(self):
         """Test that ConvE is trained correctly in training mode."""
@@ -52,6 +53,7 @@ class TestHPOModeForConvE(BaseTestTrainingMode):
     config[pkc.CONV_E_INPUT_DROPOUT] = [0.2, 0.5]
     config[pkc.CONV_E_FEATURE_MAP_DROPOUT] = [0.2, 0.4]
     config[pkc.CONV_E_OUTPUT_DROPOUT] = [0.5]
+    config[pkc.MARGIN_LOSS] = 1
 
     def test_hpo_mode(self):
         """Test whether HPO mode works correctly for ConvE."""

@@ -90,8 +90,8 @@ class ConvE(BaseModule):
         xavier_normal(self.relation_embeddings.weight.data)
 
     def predict(self, triples):
+        # triples = torch.tensor(triples, dtype=torch.long, device=self.device)
         batch_size = triples.shape[0]
-        triples = torch.tensor(triples, dtype=torch.long, device=self.device)
         subject_batch = triples[:, 0:1]
         relation_batch = triples[:, 1:2]
         object_batch = triples[:, 2:3].view(-1)

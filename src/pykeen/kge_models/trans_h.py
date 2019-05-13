@@ -39,7 +39,7 @@ class TransH(BaseModule):
                  num_entities: int,
                  num_relations: int,
                  embedding_dim: int,
-                 weigthing_soft_constraint,
+                 weighting_soft_constraint: float,
                  scoring_function: Optional[int] = 1,
                  random_seed: Optional[int] = None,
                  preferred_device: str = 'cpu',
@@ -50,7 +50,7 @@ class TransH(BaseModule):
         # A simple lookup table that stores embeddings of a fixed dictionary and size
         self.relation_embeddings = nn.Embedding(self.num_relations, self.embedding_dim)
         self.normal_vector_embeddings = nn.Embedding(self.num_relations, self.embedding_dim)
-        self.weighting_soft_constraint = weigthing_soft_constraint
+        self.weighting_soft_constraint = weighting_soft_constraint
 
         self.epsilon = torch.nn.Parameter(torch.tensor(0.005, requires_grad=True))
         self.scoring_fct_norm = scoring_function

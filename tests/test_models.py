@@ -103,6 +103,7 @@ CONV_E_CONFIG = {
     CONV_E_FEATURE_MAP_DROPOUT: 0.2,
     CONV_E_HEIGHT: 5,
     CONV_E_WIDTH: 1,
+    MARGIN_LOSS: 1,
 }
 
 TEST_TRIPLES = torch.tensor([[0, 1, 1], [0, 1, 2]], dtype=torch.long)
@@ -113,7 +114,7 @@ class TestModelInstantiation(unittest.TestCase):
 
     def test_instantiate_trans_e(self):
         """Test that TransE can be instantiated."""
-        trans_e = TransE(config=TRANS_E_CONFIG)
+        trans_e = TransE(**TRANS_E_CONFIG)
         self.assertIsNotNone(trans_e)
         self.assertEqual(trans_e.num_entities, 5)
         self.assertEqual(trans_e.num_relations, 5)
@@ -124,7 +125,7 @@ class TestModelInstantiation(unittest.TestCase):
 
     def test_instantiate_trans_h(self):
         """Test that TransH can be instantiated."""
-        trans_h = TransH(config=TRANS_H_CONFIG)
+        trans_h = TransH(**TRANS_H_CONFIG)
         self.assertIsNotNone(trans_h)
         self.assertEqual(trans_h.num_entities, 5)
         self.assertEqual(trans_h.num_relations, 5)
@@ -135,7 +136,7 @@ class TestModelInstantiation(unittest.TestCase):
 
     def test_instantiate_trans_r(self):
         """Test that TransR can be instantiated."""
-        trans_r = TransR(config=TRANS_R_CONFIG)
+        trans_r = TransR(**TRANS_R_CONFIG)
         self.assertIsNotNone(trans_r)
         self.assertEqual(trans_r.num_entities, 5)
         self.assertEqual(trans_r.num_relations, 5)
@@ -146,7 +147,7 @@ class TestModelInstantiation(unittest.TestCase):
 
     def test_instantiate_trans_d(self):
         """Test that TransD can be instantiated."""
-        trans_d = TransD(config=TRANS_D_CONFIG)
+        trans_d = TransD(**TRANS_D_CONFIG)
         self.assertIsNotNone(trans_d)
         self.assertEqual(trans_d.num_entities, 5)
         self.assertEqual(trans_d.num_relations, 5)
@@ -157,7 +158,7 @@ class TestModelInstantiation(unittest.TestCase):
 
     def test_instantiate_distmult(self):
         """Test that DistMult can be instantiated."""
-        distmult = DistMult(config=DISTMULT_CONFIG)
+        distmult = DistMult(**DISTMULT_CONFIG)
         self.assertIsNotNone(distmult)
         self.assertEqual(distmult.num_entities, 5)
         self.assertEqual(distmult.num_relations, 5)
@@ -166,7 +167,7 @@ class TestModelInstantiation(unittest.TestCase):
 
     def test_instantiate_ermlp(self):
         """Test that ERMLP can be instantiated."""
-        ermlp = ERMLP(config=ERMLP_CONFIG)
+        ermlp = ERMLP(**ERMLP_CONFIG)
         self.assertIsNotNone(ermlp)
         self.assertEqual(ermlp.num_entities, 5)
         self.assertEqual(ermlp.num_relations, 5)
@@ -175,7 +176,7 @@ class TestModelInstantiation(unittest.TestCase):
 
     def test_instantiate_strcutured_embedding(self):
         """Test that StructuredEmbedding can be instantiated."""
-        se = StructuredEmbedding(config=SE_CONFIG)
+        se = StructuredEmbedding(**SE_CONFIG)
         self.assertIsNotNone(se)
         self.assertEqual(se.num_entities, 5)
         self.assertEqual(se.num_relations, 5)
@@ -185,7 +186,7 @@ class TestModelInstantiation(unittest.TestCase):
 
     def test_instantiate_unstructured_model(self):
         """Test that UnstructuredModel can be instantiated."""
-        um = UnstructuredModel(config=UM_CONFIG)
+        um = UnstructuredModel(**UM_CONFIG)
         self.assertIsNotNone(um)
         self.assertEqual(um.num_entities, 5)
         self.assertEqual(um.num_relations, 5)
@@ -195,7 +196,7 @@ class TestModelInstantiation(unittest.TestCase):
 
     def test_instantiate_rescal(self):
         """Test that RESCAL can be instantiated."""
-        rescal = RESCAL(config=RESCAL_CONFIG)
+        rescal = RESCAL(**RESCAL_CONFIG)
         self.assertIsNotNone(rescal)
         self.assertEqual(rescal.num_entities, 5)
         self.assertEqual(rescal.num_relations, 5)
@@ -204,7 +205,7 @@ class TestModelInstantiation(unittest.TestCase):
 
     def test_instantiate_conv_e(self):
         """Test that ConvE can be instantiated."""
-        conv_e = ConvE(config=CONV_E_CONFIG)
+        conv_e = ConvE(**CONV_E_CONFIG)
         self.assertIsNotNone(conv_e)
         self.assertEqual(conv_e.num_entities, 5)
         self.assertEqual(conv_e.num_relations, 5)
@@ -214,7 +215,7 @@ class TestModelInstantiation(unittest.TestCase):
 class TestScoringFunctions(unittest.TestCase):
     def test_compute_scores_trans_e(self):
         """Test that TransE's socore function computes the scores correct."""
-        trans_e = TransE(config=TRANS_E_CONFIG)
+        trans_e = TransE(**TRANS_E_CONFIG)
         h_embs = torch.tensor([[1.,1.],[2.,2.]],dtype=torch.float)
         r_embs = torch.tensor([[1., 1.], [2., 2.]],dtype=torch.float)
         t_embs = torch.tensor([[2., 2.], [4., 4.]],dtype=torch.float)
@@ -225,7 +226,7 @@ class TestScoringFunctions(unittest.TestCase):
 
     def test_compute_scores_trans_h(self):
         """Test that TransH's socore function computes the scores correct."""
-        trans_h = TransH(config=TRANS_H_CONFIG)
+        trans_h = TransH(**TRANS_H_CONFIG)
         proj_h_embs = torch.tensor([[1.,1.],[1.,1.]],dtype=torch.float)
         proj_r_embs = torch.tensor([[1., 1.], [2., 2.]],dtype=torch.float)
         proj_t_embs = torch.tensor([[2., 2.], [4., 4.]],dtype=torch.float)
@@ -236,7 +237,7 @@ class TestScoringFunctions(unittest.TestCase):
 
     def test_compute_scores_trans_r(self):
         """Test that TransR's socore function computes the scores correct."""
-        trans_r = TransR(config=TRANS_R_CONFIG)
+        trans_r = TransR(**TRANS_R_CONFIG)
         proj_h_embs = torch.tensor([[1.,1.],[1.,1.]],dtype=torch.float)
         proj_r_embs = torch.tensor([[1., 1.], [2., 2.]],dtype=torch.float)
         proj_t_embs = torch.tensor([[2., 2.], [4., 4.]],dtype=torch.float)
@@ -247,7 +248,7 @@ class TestScoringFunctions(unittest.TestCase):
 
     def test_compute_scores_trans_d(self):
         """Test that TransD's socore function computes the scores correct."""
-        trans_d = TransD(config=TRANS_D_CONFIG)
+        trans_d = TransD(**TRANS_D_CONFIG)
         proj_h_embs = torch.tensor([[1.,1.],[1.,1.]],dtype=torch.float)
         proj_r_embs = torch.tensor([[1., 1.], [2., 2.]],dtype=torch.float)
         proj_t_embs = torch.tensor([[2., 2.], [4., 4.]],dtype=torch.float)
@@ -258,7 +259,7 @@ class TestScoringFunctions(unittest.TestCase):
 
     def test_compute_scores_distmult(self):
         """Test that DistMult's socore function computes the scores correct."""
-        distmult = DistMult(config=DISTMULT_CONFIG)
+        distmult = DistMult(**DISTMULT_CONFIG)
         h_embs = torch.tensor([[1.,1.],[1.,1.]],dtype=torch.float)
         r_embs = torch.tensor([[1., 1.], [2., 2.]],dtype=torch.float)
         t_embs = torch.tensor([[2., 2.], [4., 4.]],dtype=torch.float)
@@ -269,7 +270,7 @@ class TestScoringFunctions(unittest.TestCase):
 
     def test_compute_scores_um(self):
         """Test that DistMult's socore function computes the scores correct."""
-        um = UnstructuredModel(config=UM_CONFIG)
+        um = UnstructuredModel(**UM_CONFIG)
         h_embs = torch.tensor([[1.,1.],[1.,1.]],dtype=torch.float)
         t_embs = torch.tensor([[2., 2.], [4., 4.]],dtype=torch.float)
 
@@ -279,7 +280,7 @@ class TestScoringFunctions(unittest.TestCase):
 
     def test_compute_scores_se(self):
         """Test that SE's socore function computes the scores correct."""
-        se = StructuredEmbedding(config=SE_CONFIG)
+        se = StructuredEmbedding(**SE_CONFIG)
         proj_h_embs = torch.tensor([[1.,1.],[1.,1.]],dtype=torch.float)
         proj_t_embs = torch.tensor([[2., 2.], [4., 4.]],dtype=torch.float)
 
@@ -289,7 +290,7 @@ class TestScoringFunctions(unittest.TestCase):
 
     def test_compute_scores_ermlp(self):
         """Test that SE's score function computes the scores correct."""
-        ermlp = ERMLP(config=ERMLP_CONFIG)
+        ermlp = ERMLP(**ERMLP_CONFIG)
 
         h_embs = torch.tensor([[1., 1.], [1., 1.]], dtype=torch.float)
         r_embs = torch.tensor([[1., 1.], [2., 2.]], dtype=torch.float)
@@ -302,7 +303,7 @@ class TestScoringFunctions(unittest.TestCase):
 
     def test_um_predict(self):
         """Test UM's predict function."""
-        um = UnstructuredModel(config=UM_CONFIG)
+        um = UnstructuredModel(**UM_CONFIG)
         predictions = um.predict(triples=TEST_TRIPLES)
 
         self.assertEqual(len(predictions),len(TEST_TRIPLES))
@@ -310,7 +311,7 @@ class TestScoringFunctions(unittest.TestCase):
 
     def test_se_predict(self):
         """Test SE's predict function."""
-        se = StructuredEmbedding(config=SE_CONFIG)
+        se = StructuredEmbedding(**SE_CONFIG)
         predictions = se.predict(triples=TEST_TRIPLES)
 
         self.assertEqual(len(predictions),len(TEST_TRIPLES))
@@ -318,7 +319,7 @@ class TestScoringFunctions(unittest.TestCase):
 
     def test_trans_e_predict(self):
         """Test TransE's predict function."""
-        trans_e = TransE(config=TRANS_E_CONFIG)
+        trans_e = TransE(**TRANS_E_CONFIG)
         predictions = trans_e.predict(triples=TEST_TRIPLES)
 
         self.assertEqual(len(predictions),len(TEST_TRIPLES))
@@ -326,7 +327,7 @@ class TestScoringFunctions(unittest.TestCase):
 
     def test_trans_h_predict(self):
         """Test TransH's predict function."""
-        trans_h = TransE(config=TRANS_H_CONFIG)
+        trans_h = TransE(**TRANS_H_CONFIG)
         predictions = trans_h.predict(triples=TEST_TRIPLES)
 
         self.assertEqual(len(predictions),len(TEST_TRIPLES))
@@ -334,7 +335,7 @@ class TestScoringFunctions(unittest.TestCase):
 
     def test_trans_r_predict(self):
         """Test TransR's predict function."""
-        trans_r = TransR(config=TRANS_R_CONFIG)
+        trans_r = TransR(**TRANS_R_CONFIG)
         predictions = trans_r.predict(triples=TEST_TRIPLES)
 
         self.assertEqual(len(predictions),len(TEST_TRIPLES))
@@ -342,7 +343,7 @@ class TestScoringFunctions(unittest.TestCase):
 
     def test_trans_d_predict(self):
         """Test TransD's predict function."""
-        trans_d = TransR(config=TRANS_D_CONFIG)
+        trans_d = TransR(**TRANS_D_CONFIG)
         predictions = trans_d.predict(triples=TEST_TRIPLES)
 
         self.assertEqual(len(predictions),len(TEST_TRIPLES))
@@ -350,7 +351,7 @@ class TestScoringFunctions(unittest.TestCase):
 
     def test_ermlp_predict(self):
         """Test ERMLP's predict function."""
-        ermlp = ERMLP(config=ERMLP_CONFIG)
+        ermlp = ERMLP(**ERMLP_CONFIG)
         predictions = ermlp.predict(triples=TEST_TRIPLES)
 
         self.assertEqual(len(predictions),len(TEST_TRIPLES))
@@ -358,7 +359,7 @@ class TestScoringFunctions(unittest.TestCase):
 
     def test_rescal_predict(self):
         """Test RESCAL's predict function."""
-        rescal = RESCAL(config=RESCAL_CONFIG)
+        rescal = RESCAL(**RESCAL_CONFIG)
         predictions = rescal.predict(triples=TEST_TRIPLES)
 
         self.assertEqual(len(predictions),len(TEST_TRIPLES))
@@ -366,7 +367,7 @@ class TestScoringFunctions(unittest.TestCase):
 
     def test_conv_e_predict(self):
         """Test ConvE's predict function."""
-        conv_e = ConvE(config=CONV_E_CONFIG)
+        conv_e = ConvE(**CONV_E_CONFIG)
 
         predictions = conv_e.predict(triples=TEST_TRIPLES)
 

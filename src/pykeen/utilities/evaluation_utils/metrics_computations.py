@@ -138,12 +138,12 @@ def _compute_rank(
     scores_of_corrupted_subjects = kg_embedding_model.predict(corrupted_subject_based)
     scores_of_corrupted_objects = kg_embedding_model.predict(corrupted_object_based)
 
-    score_of_positive = kg_embedding_model.predict([pos_triple])
+    score_of_positive = kg_embedding_model.predict(torch.tensor([pos_triple], dtype=torch.long, device=device))
 
-    rank_of_positive_subject_based = scores_of_corrupted_subjects.size - \
+    rank_of_positive_subject_based = scores_of_corrupted_subjects.shape[0] - \
                                      np.greater(scores_of_corrupted_subjects, score_of_positive).sum()
 
-    rank_of_positive_object_based = scores_of_corrupted_objects.size - \
+    rank_of_positive_object_based = scores_of_corrupted_objects.shape[0] - \
                                     np.greater(scores_of_corrupted_objects, score_of_positive).sum()
 
     return (
