@@ -80,7 +80,7 @@ def _filter_corrupted_triples(
 
     if mask.size == 0:
         raise Exception("User selected filtered metric computation, but all corrupted triples exists"
-                        "also a positive triples.")
+                        "also as positive triples.")
     corrupted_object_based = corrupted_object_based[mask]
 
     return corrupted_subject_based, corrupted_object_based
@@ -161,7 +161,6 @@ class MetricResults:
 
 
 def compute_metric_results(
-        all_entities,
         kg_embedding_model,
         mapped_train_triples,
         mapped_test_triples,
@@ -192,6 +191,8 @@ def compute_metric_results(
     }
     kg_embedding_model = kg_embedding_model.eval()
     kg_embedding_model = kg_embedding_model.to(device)
+
+    all_entities = np.arange(kg_embedding_model.num_entities)
 
     all_pos_triples = np.concatenate([mapped_train_triples, mapped_test_triples], axis=0)
     all_pos_triples_hashed = np.apply_along_axis(_hash_triples, 1, all_pos_triples)

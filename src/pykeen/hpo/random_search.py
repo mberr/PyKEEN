@@ -82,12 +82,17 @@ class RandomSearch(HPOptimizer):
         for _ in trange(max_iters, desc='HPO Iteration'):
             # Sample hyper-params
             kge_model_config: Dict[str, Any] = sample_fct(config)
-            kge_model_config[pkc.NUM_ENTITIES]: int = len(entity_to_id)
-            kge_model_config[pkc.NUM_RELATIONS]: int = len(rel_to_id)
             kge_model_config[pkc.SEED]: int = seed
+            kge_model_config[pkc.PREFERRED_DEVICE]: str = pkc.CPU if device == pkc.CPU else pkc.GPU
 
             # Configure defined model
             kge_model: Module = get_kge_model(config=kge_model_config)
+
+            # Load class params
+            kge_model.entity_label_to_id: Dict[str, int] = entity_to_id
+            kge_model.relation_label_to_id: Dict[str, int] = rel_to_id
+            kge_model.num_entities: int = len(entity_to_id)
+            kge_model.num_relations: int = len(rel_to_id)
 
             models_params.append(kge_model_config)
             entity_to_ids.append(entity_to_id)
@@ -95,21 +100,22 @@ class RandomSearch(HPOptimizer):
 
             all_entities = np.array(list(entity_to_id.values()))
 
-            trained_kge_model, epoch_loss = train_kge_model(
-                kge_model=kge_model,
-                all_entities=all_entities,
-                learning_rate=kge_model_config[pkc.LEARNING_RATE],
-                num_epochs=kge_model_config[pkc.NUM_EPOCHS],
-                batch_size=kge_model_config[pkc.BATCH_SIZE],
+            batch_size = kge_model_config[pkc.BATCH_SIZE]
+            num_epochs = kge_model_config[pkc.NUM_EPOCHS]
+            learning_rate = kge_model_config[pkc.LEARNING_RATE]
+
+            epoch_loss = kge_model.fit(
                 pos_triples=mapped_train_triples,
-                device=device,
-                seed=seed,
+                learning_rate=learning_rate,
+                num_epochs=num_epochs,
+                batch_size=batch_size,
                 tqdm_kwargs=dict(leave=False),
             )
 
+            trained_kge_model = kge_model
+
             # Evaluate trained model
             metric_results = compute_metric_results(
-                all_entities=all_entities,
                 kg_embedding_model=trained_kge_model,
                 mapped_train_triples=mapped_train_triples,
                 mapped_test_triples=mapped_test_triples,

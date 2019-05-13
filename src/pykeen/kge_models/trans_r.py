@@ -48,27 +48,26 @@ class TransR(BaseModule):
 
     def __init__(self,
                  margin_loss: float,
-                 num_entities: int,
-                 num_relations: int,
                  embedding_dim: int,
                  relation_embedding_dim,
                  scoring_function: Optional[int] = 1,
                  random_seed: Optional[int] = None,
                  preferred_device: str = 'cpu',
                  **kwargs) -> None:
-        super().__init__(margin_loss, num_entities, num_relations, embedding_dim, random_seed, preferred_device)
+        super().__init__(margin_loss, embedding_dim, random_seed, preferred_device)
 
         self.scoring_fct_norm = scoring_function
 
         # Embeddings
         self.relation_embedding_dim = relation_embedding_dim
 
+    def _init_embeddings(self):
+        super()._init_embeddings()
         # max_norm = 1 according to the paper
         self.relation_embeddings = nn.Embedding(self.num_relations, self.relation_embedding_dim,
                                                 norm_type=self.relation_embedding_norm_type,
                                                 max_norm=self.relation_embedding_max_norm)
         self.projection_matrix_embs = nn.Embedding(self.num_relations, self.relation_embedding_dim * self.embedding_dim)
-
         self._initialize()
 
     def _initialize(self):
@@ -101,6 +100,11 @@ class TransR(BaseModule):
         return projected_entity_embs
 
     def predict(self, triples):
+        # Check if the model has been fitted yet.
+        if self.entity_embeddings is None:
+            print('The model has not been fitted yet. Predictions are based on randomly initialized embeddings.')
+            self._init_embeddings()
+
         # triples = torch.tensor(triples, dtype=torch.long, device=self.device)
         heads = triples[:, 0:1]
         relations = triples[:, 1:2]

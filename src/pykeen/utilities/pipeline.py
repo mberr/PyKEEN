@@ -22,7 +22,6 @@ from pykeen.utilities.triples_creation_utils import create_mapped_triples, creat
 __all__ = [
     'Pipeline',
     'load_data',
-    'prepare_data'
 ]
 
 log = logging.getLogger(__name__)
@@ -69,7 +68,7 @@ class Pipeline(object):
                 entity_to_id=self.entity_label_to_id,
                 rel_to_id=self.relation_label_to_id,
                 config=self.config,
-                device=self.device,
+                device=str(self.device),
                 seed=self.seed,
             )
         else:  # Training Mode
@@ -81,8 +80,6 @@ class Pipeline(object):
             all_entities = np.array(list(self.entity_label_to_id.values()))
 
             # Initialize KG embedding model
-            self.config[pkc.NUM_ENTITIES] = len(self.entity_label_to_id)
-            self.config[pkc.NUM_RELATIONS] = len(self.relation_label_to_id)
             self.config[pkc.PREFERRED_DEVICE] = pkc.CPU if self.device_name == pkc.CPU else pkc.GPU
 
             if self.seed is not None:
@@ -90,13 +87,17 @@ class Pipeline(object):
 
             kge_model: Module = get_kge_model(config=self.config)
 
+            kge_model.entity_label_to_id = self.entity_label_to_id
+            kge_model.relation_label_to_id = self.relation_label_to_id
+            kge_model.num_entities = len(self.entity_label_to_id)
+            kge_model.num_relations = len(self.relation_label_to_id)
+
             batch_size = self.config[pkc.BATCH_SIZE]
             num_epochs = self.config[pkc.NUM_EPOCHS]
             learning_rate = self.config[pkc.LEARNING_RATE]
 
             log.info("-------------Train KG Embeddings-------------")
             loss_per_epoch = kge_model.fit(
-                all_entities=all_entities,
                 pos_triples=mapped_pos_train_triples,
                 learning_rate=learning_rate,
                 num_epochs=num_epochs,
@@ -110,11 +111,10 @@ class Pipeline(object):
             if self.is_evaluation_required:
                 log.info("-------------Start Evaluation-------------")
                 metric_results = compute_metric_results(
-                    all_entities=all_entities,
                     kg_embedding_model=kge_model,
                     mapped_train_triples=mapped_pos_train_triples,
                     mapped_test_triples=mapped_pos_test_triples,
-                    device=self.device,
+                    device=str(self.device),
                     filter_neg_triples=self.config[pkc.FILTER_NEG_TRIPLES],
                 )
 
@@ -208,7 +208,6 @@ def load_data(path: Union[str, Iterable[str]]) -> np.ndarray:
         for p in path
     ])
 
-
 def _load_data_helper(path: str) -> np.ndarray:
     for prefix, handler in pkc.IMPORTERS.items():
         if path.startswith(f'{prefix}:'):
@@ -265,33 +264,3 @@ def _make_results(
     results[pkc.RELATION_TO_ID] = rel_to_id
     results[pkc.FINAL_CONFIGURATION] = params
     return results
-
-# These functions allow the direct import for the new API
-
-def prepare_data(data_path: str) -> Mapping:
-    """Run this pipeline."""
-
-    triples, entity_label_to_id, relation_label_to_id = _get_train_triples(data_path)
-
-    all_entities = np.array(list(entity_label_to_id.values()))
-
-    # Initialize KG embedding model
-    num_entities = len(entity_label_to_id)
-    num_relations = len(relation_label_to_id)
-
-    return triples, entity_label_to_id, relation_label_to_id, all_entities, num_entities, num_relations
-
-
-
-def _get_train_triples(data_path: str):
-    train_pos = load_data(data_path)
-
-    entity_label_to_id, relation_label_to_id = create_mappings(triples=train_pos)
-
-    mapped_pos_train_triples, _, _ = create_mapped_triples(
-        triples=train_pos,
-        entity_label_to_id=entity_label_to_id,
-        relation_label_to_id=relation_label_to_id,
-    )
-
-    return mapped_pos_train_triples, entity_label_to_id, relation_label_to_id

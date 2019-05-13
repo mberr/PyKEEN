@@ -33,22 +33,26 @@ class RESCAL(BaseModule):
 
     def __init__(self,
                  margin_loss: float,
-                 num_entities: int,
-                 num_relations: int,
                  embedding_dim: int,
                  scoring_function: Optional[int] = 1,
                  random_seed: Optional[int] = None,
                  preferred_device: str = 'cpu',
                  **kwargs
                  ) -> None:
-        super().__init__(margin_loss, num_entities, num_relations, embedding_dim, random_seed, preferred_device)
-
-        # Embeddings
-        self.relation_embeddings = nn.Embedding(self.num_relations, self.embedding_dim * self.embedding_dim)
+        super().__init__(margin_loss, embedding_dim, random_seed, preferred_device)
 
         self.scoring_fct_norm = scoring_function
 
+    def _init_embeddings(self):
+        super()._init_embeddings()
+        self.relation_embeddings = nn.Embedding(self.num_relations, self.embedding_dim * self.embedding_dim)
+
     def predict(self, triples):
+        # Check if the model has been fitted yet.
+        if self.entity_embeddings is None:
+            print('The model has not been fitted yet. Predictions are based on randomly initialized embeddings.')
+            self._init_embeddings()
+
         # triples = torch.tensor(triples, dtype=torch.long, device=self.device)
         scores = self._score_triples(triples)
         return scores.detach().cpu().numpy()

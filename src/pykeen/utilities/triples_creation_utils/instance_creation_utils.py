@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import logging
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Union, Iterable
+
+import pykeen.constants as pkc
 
 import numpy as np
 

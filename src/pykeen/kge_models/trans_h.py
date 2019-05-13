@@ -36,8 +36,6 @@ class TransH(BaseModule):
 
     def __init__(self,
                  margin_loss: float,
-                 num_entities: int,
-                 num_relations: int,
                  embedding_dim: int,
                  weighting_soft_constraint: float,
                  scoring_function: Optional[int] = 1,
@@ -45,15 +43,18 @@ class TransH(BaseModule):
                  preferred_device: str = 'cpu',
                  **kwargs
                  ) -> None:
-        super().__init__(margin_loss, num_entities, num_relations, embedding_dim, random_seed, preferred_device)
+        super().__init__(margin_loss, embedding_dim, random_seed, preferred_device)
 
-        # A simple lookup table that stores embeddings of a fixed dictionary and size
-        self.relation_embeddings = nn.Embedding(self.num_relations, self.embedding_dim)
-        self.normal_vector_embeddings = nn.Embedding(self.num_relations, self.embedding_dim)
         self.weighting_soft_constraint = weighting_soft_constraint
 
         self.epsilon = torch.nn.Parameter(torch.tensor(0.005, requires_grad=True))
         self.scoring_fct_norm = scoring_function
+
+    def _init_embeddings(self):
+        super()._init_embeddings()
+        # A simple lookup table that stores embeddings of a fixed dictionary and size
+        self.relation_embeddings = nn.Embedding(self.num_relations, self.embedding_dim)
+        self.normal_vector_embeddings = nn.Embedding(self.num_relations, self.embedding_dim)
         # TODO: Add initialization
 
     def project_to_hyperplane(self, entity_embs, normal_vec_embs):
@@ -112,6 +113,11 @@ class TransH(BaseModule):
         return loss
 
     def predict(self, triples):
+        # Check if the model has been fitted yet.
+        if self.entity_embeddings is None:
+            print('The model has not been fitted yet. Predictions are based on randomly initialized embeddings.')
+            self._init_embeddings()
+
         heads = triples[:, 0:1]
         relations = triples[:, 1:2]
         tails = triples[:, 2:3]

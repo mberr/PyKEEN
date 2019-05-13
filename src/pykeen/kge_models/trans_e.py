@@ -41,8 +41,6 @@ class TransE(BaseModule):
 
     def __init__(self,
                  margin_loss: float,
-                 num_entities: int,
-                 num_relations: int,
                  embedding_dim: int,
                  scoring_function: Optional[int] = 1,
                  normalization_of_entities: Optional[int] = 2,
@@ -50,15 +48,10 @@ class TransE(BaseModule):
                  preferred_device: str = 'cpu',
                  **kwargs
                  ) -> None:
-        super().__init__(margin_loss, num_entities, num_relations, embedding_dim, random_seed, preferred_device)
+        super().__init__(margin_loss, embedding_dim, random_seed, preferred_device)
 
         self.l_p_norm_entities = normalization_of_entities
         self.scoring_fct_norm = scoring_function
-
-        # Embeddings
-        self.relation_embeddings = nn.Embedding(self.num_relations, self.embedding_dim)
-
-        self._initialize()
 
     def _initialize(self):
         embeddings_init_bound = 6 / np.sqrt(self.embedding_dim)
@@ -77,7 +70,17 @@ class TransE(BaseModule):
         self.relation_embeddings.weight.data = self.relation_embeddings.weight.data.div(
             norms.view(self.num_relations, 1).expand_as(self.relation_embeddings.weight))
 
+    def _init_embeddings(self):
+        super()._init_embeddings()
+        self.relation_embeddings = nn.Embedding(self.num_relations, self.embedding_dim)
+        self._initialize()
+
     def predict(self, triples):
+        # Check if the model has been fitted yet.
+        if self.entity_embeddings is None:
+            print('The model has not been fitted yet. Predictions are based on randomly initialized embeddings.')
+            self._init_embeddings()
+
         triples = torch.tensor(triples, dtype=torch.long, device=self.device)
         scores = self._score_triples(triples)
         return scores.detach().cpu().numpy()

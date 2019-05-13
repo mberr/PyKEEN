@@ -115,6 +115,8 @@ class TestModelInstantiation(unittest.TestCase):
     def test_instantiate_trans_e(self):
         """Test that TransE can be instantiated."""
         trans_e = TransE(**TRANS_E_CONFIG)
+        trans_e.num_entities = TRANS_E_CONFIG[NUM_ENTITIES]
+        trans_e.num_relations = TRANS_E_CONFIG[NUM_RELATIONS]
         self.assertIsNotNone(trans_e)
         self.assertEqual(trans_e.num_entities, 5)
         self.assertEqual(trans_e.num_relations, 5)
@@ -126,6 +128,8 @@ class TestModelInstantiation(unittest.TestCase):
     def test_instantiate_trans_h(self):
         """Test that TransH can be instantiated."""
         trans_h = TransH(**TRANS_H_CONFIG)
+        trans_h.num_entities = TRANS_H_CONFIG[NUM_ENTITIES]
+        trans_h.num_relations = TRANS_H_CONFIG[NUM_RELATIONS]
         self.assertIsNotNone(trans_h)
         self.assertEqual(trans_h.num_entities, 5)
         self.assertEqual(trans_h.num_relations, 5)
@@ -137,6 +141,8 @@ class TestModelInstantiation(unittest.TestCase):
     def test_instantiate_trans_r(self):
         """Test that TransR can be instantiated."""
         trans_r = TransR(**TRANS_R_CONFIG)
+        trans_r.num_entities = TRANS_R_CONFIG[NUM_ENTITIES]
+        trans_r.num_relations = TRANS_R_CONFIG[NUM_RELATIONS]
         self.assertIsNotNone(trans_r)
         self.assertEqual(trans_r.num_entities, 5)
         self.assertEqual(trans_r.num_relations, 5)
@@ -148,6 +154,8 @@ class TestModelInstantiation(unittest.TestCase):
     def test_instantiate_trans_d(self):
         """Test that TransD can be instantiated."""
         trans_d = TransD(**TRANS_D_CONFIG)
+        trans_d.num_entities = TRANS_D_CONFIG[NUM_ENTITIES]
+        trans_d.num_relations = TRANS_D_CONFIG[NUM_RELATIONS]
         self.assertIsNotNone(trans_d)
         self.assertEqual(trans_d.num_entities, 5)
         self.assertEqual(trans_d.num_relations, 5)
@@ -159,6 +167,8 @@ class TestModelInstantiation(unittest.TestCase):
     def test_instantiate_distmult(self):
         """Test that DistMult can be instantiated."""
         distmult = DistMult(**DISTMULT_CONFIG)
+        distmult.num_entities = DISTMULT_CONFIG[NUM_ENTITIES]
+        distmult.num_relations = DISTMULT_CONFIG[NUM_RELATIONS]
         self.assertIsNotNone(distmult)
         self.assertEqual(distmult.num_entities, 5)
         self.assertEqual(distmult.num_relations, 5)
@@ -168,6 +178,8 @@ class TestModelInstantiation(unittest.TestCase):
     def test_instantiate_ermlp(self):
         """Test that ERMLP can be instantiated."""
         ermlp = ERMLP(**ERMLP_CONFIG)
+        ermlp.num_entities = ERMLP_CONFIG[NUM_ENTITIES]
+        ermlp.num_relations = ERMLP_CONFIG[NUM_RELATIONS]
         self.assertIsNotNone(ermlp)
         self.assertEqual(ermlp.num_entities, 5)
         self.assertEqual(ermlp.num_relations, 5)
@@ -177,6 +189,8 @@ class TestModelInstantiation(unittest.TestCase):
     def test_instantiate_strcutured_embedding(self):
         """Test that StructuredEmbedding can be instantiated."""
         se = StructuredEmbedding(**SE_CONFIG)
+        se.num_entities = SE_CONFIG[NUM_ENTITIES]
+        se.num_relations = SE_CONFIG[NUM_RELATIONS]
         self.assertIsNotNone(se)
         self.assertEqual(se.num_entities, 5)
         self.assertEqual(se.num_relations, 5)
@@ -187,6 +201,8 @@ class TestModelInstantiation(unittest.TestCase):
     def test_instantiate_unstructured_model(self):
         """Test that UnstructuredModel can be instantiated."""
         um = UnstructuredModel(**UM_CONFIG)
+        um.num_entities = UM_CONFIG[NUM_ENTITIES]
+        um.num_relations = UM_CONFIG[NUM_RELATIONS]
         self.assertIsNotNone(um)
         self.assertEqual(um.num_entities, 5)
         self.assertEqual(um.num_relations, 5)
@@ -197,6 +213,8 @@ class TestModelInstantiation(unittest.TestCase):
     def test_instantiate_rescal(self):
         """Test that RESCAL can be instantiated."""
         rescal = RESCAL(**RESCAL_CONFIG)
+        rescal.num_entities = RESCAL_CONFIG[NUM_ENTITIES]
+        rescal.num_relations = RESCAL_CONFIG[NUM_RELATIONS]
         self.assertIsNotNone(rescal)
         self.assertEqual(rescal.num_entities, 5)
         self.assertEqual(rescal.num_relations, 5)
@@ -206,6 +224,8 @@ class TestModelInstantiation(unittest.TestCase):
     def test_instantiate_conv_e(self):
         """Test that ConvE can be instantiated."""
         conv_e = ConvE(**CONV_E_CONFIG)
+        conv_e.num_entities = CONV_E_CONFIG[NUM_ENTITIES]
+        conv_e.num_relations = CONV_E_CONFIG[NUM_RELATIONS]
         self.assertIsNotNone(conv_e)
         self.assertEqual(conv_e.num_entities, 5)
         self.assertEqual(conv_e.num_relations, 5)
@@ -304,6 +324,8 @@ class TestScoringFunctions(unittest.TestCase):
     def test_um_predict(self):
         """Test UM's predict function."""
         um = UnstructuredModel(**UM_CONFIG)
+        um.num_entities = UM_CONFIG[NUM_ENTITIES]
+        um.num_relations = UM_CONFIG[NUM_RELATIONS]
         predictions = um.predict(triples=TEST_TRIPLES)
 
         self.assertEqual(len(predictions),len(TEST_TRIPLES))
@@ -312,6 +334,8 @@ class TestScoringFunctions(unittest.TestCase):
     def test_se_predict(self):
         """Test SE's predict function."""
         se = StructuredEmbedding(**SE_CONFIG)
+        se.num_entities = SE_CONFIG[NUM_ENTITIES]
+        se.num_relations = SE_CONFIG[NUM_RELATIONS]
         predictions = se.predict(triples=TEST_TRIPLES)
 
         self.assertEqual(len(predictions),len(TEST_TRIPLES))
@@ -320,6 +344,8 @@ class TestScoringFunctions(unittest.TestCase):
     def test_trans_e_predict(self):
         """Test TransE's predict function."""
         trans_e = TransE(**TRANS_E_CONFIG)
+        trans_e.num_entities = TRANS_E_CONFIG[NUM_ENTITIES]
+        trans_e.num_relations = TRANS_E_CONFIG[NUM_RELATIONS]
         predictions = trans_e.predict(triples=TEST_TRIPLES)
 
         self.assertEqual(len(predictions),len(TEST_TRIPLES))
@@ -328,6 +354,8 @@ class TestScoringFunctions(unittest.TestCase):
     def test_trans_h_predict(self):
         """Test TransH's predict function."""
         trans_h = TransE(**TRANS_H_CONFIG)
+        trans_h.num_entities = TRANS_H_CONFIG[NUM_ENTITIES]
+        trans_h.num_relations = TRANS_H_CONFIG[NUM_RELATIONS]
         predictions = trans_h.predict(triples=TEST_TRIPLES)
 
         self.assertEqual(len(predictions),len(TEST_TRIPLES))
@@ -336,6 +364,8 @@ class TestScoringFunctions(unittest.TestCase):
     def test_trans_r_predict(self):
         """Test TransR's predict function."""
         trans_r = TransR(**TRANS_R_CONFIG)
+        trans_r.num_entities = TRANS_R_CONFIG[NUM_ENTITIES]
+        trans_r.num_relations = TRANS_R_CONFIG[NUM_RELATIONS]
         predictions = trans_r.predict(triples=TEST_TRIPLES)
 
         self.assertEqual(len(predictions),len(TEST_TRIPLES))
@@ -344,6 +374,8 @@ class TestScoringFunctions(unittest.TestCase):
     def test_trans_d_predict(self):
         """Test TransD's predict function."""
         trans_d = TransR(**TRANS_D_CONFIG)
+        trans_d.num_entities = TRANS_D_CONFIG[NUM_ENTITIES]
+        trans_d.num_relations = TRANS_D_CONFIG[NUM_RELATIONS]
         predictions = trans_d.predict(triples=TEST_TRIPLES)
 
         self.assertEqual(len(predictions),len(TEST_TRIPLES))
@@ -352,6 +384,8 @@ class TestScoringFunctions(unittest.TestCase):
     def test_ermlp_predict(self):
         """Test ERMLP's predict function."""
         ermlp = ERMLP(**ERMLP_CONFIG)
+        ermlp.num_entities = ERMLP_CONFIG[NUM_ENTITIES]
+        ermlp.num_relations = ERMLP_CONFIG[NUM_RELATIONS]
         predictions = ermlp.predict(triples=TEST_TRIPLES)
 
         self.assertEqual(len(predictions),len(TEST_TRIPLES))
@@ -360,6 +394,8 @@ class TestScoringFunctions(unittest.TestCase):
     def test_rescal_predict(self):
         """Test RESCAL's predict function."""
         rescal = RESCAL(**RESCAL_CONFIG)
+        rescal.num_entities = RESCAL_CONFIG[NUM_ENTITIES]
+        rescal.num_relations = RESCAL_CONFIG[NUM_RELATIONS]
         predictions = rescal.predict(triples=TEST_TRIPLES)
 
         self.assertEqual(len(predictions),len(TEST_TRIPLES))
@@ -368,7 +404,8 @@ class TestScoringFunctions(unittest.TestCase):
     def test_conv_e_predict(self):
         """Test ConvE's predict function."""
         conv_e = ConvE(**CONV_E_CONFIG)
-
+        conv_e.num_entities = CONV_E_CONFIG[NUM_ENTITIES]
+        conv_e.num_relations = CONV_E_CONFIG[NUM_RELATIONS]
         predictions = conv_e.predict(triples=TEST_TRIPLES)
 
         self.assertEqual(len(predictions), len(TEST_TRIPLES))

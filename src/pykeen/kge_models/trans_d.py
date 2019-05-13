@@ -37,8 +37,6 @@ class TransD(BaseModule):
 
     def __init__(self,
                  margin_loss: float,
-                 num_entities: int,
-                 num_relations: int,
                  embedding_dim: int,
                  relation_embedding_dim,
                  scoring_function: Optional[int] = 1,
@@ -46,21 +44,27 @@ class TransD(BaseModule):
                  preferred_device: str = 'cpu',
                  **kwargs
                  ) -> None:
-        super().__init__(margin_loss, num_entities, num_relations, embedding_dim, random_seed, preferred_device)
+        super().__init__(margin_loss, embedding_dim, random_seed, preferred_device)
 
         self.scoring_fct_norm = scoring_function
 
         # Embeddings
         self.relation_embedding_dim = relation_embedding_dim
 
+    def _init_embeddings(self):
+        super()._init_embeddings()
         # A simple lookup table that stores embeddings of a fixed dictionary and size
         self.relation_embeddings = nn.Embedding(self.num_relations, self.relation_embedding_dim, max_norm=1)
         self.entity_projections = nn.Embedding(self.num_entities, self.embedding_dim)
         self.relation_projections = nn.Embedding(self.num_relations, self.relation_embedding_dim)
-
         # FIXME @mehdi what about initialization?
 
     def predict(self, triples):
+        # Check if the model has been fitted yet.
+        if self.entity_embeddings is None:
+            print('The model has not been fitted yet. Predictions are based on randomly initialized embeddings.')
+            self._init_embeddings()
+
         # triples = torch.tensor(triples, dtype=torch.long, device=self.device)
         scores = self._score_triples(triples)
         return scores.detach().cpu().numpy()

@@ -21,15 +21,13 @@ class TransH(BaseModule):
 
     def __init__(self,
                  margin_loss: float,
-                 num_entities: int,
-                 num_relations: int,
                  embedding_dim: int,
                  weigthing_soft_constraint,
                  scoring_function: Optional[int] = 1,
                  random_seed: Optional[int] = None,
                  preferred_device: str = 'cpu',
                  **kwargs):
-        super().__init__(margin_loss, num_entities, num_relations, embedding_dim, random_seed, preferred_device)
+        super().__init__(margin_loss, embedding_dim, random_seed, preferred_device)
 
 
         self.weighting_soft_constraint = weigthing_soft_constraint
@@ -37,6 +35,8 @@ class TransH(BaseModule):
         self.epsilon = 0.05
         self.scoring_fct_norm = scoring_function
 
+    def _init_embeddings(self):
+        super()._init_embeddings()
         # A simple lookup table that stores embeddings of a fixed dictionary and size
         self.entity_embeddings = nn.Embedding(self.num_entities, self.embedding_dim)
         self.relation_embeddings = nn.Embedding(self.num_relations, self.embedding_dim)
@@ -132,6 +132,10 @@ class TransH(BaseModule):
         :param tail:
         :return:
         """
+        # Check if the model has been fitted yet.
+        if self.entity_embeddings is None:
+            print('The model has not been fitted yet. Predictions are based on randomly initialized embeddings.')
+            self._init_embeddings()
 
         heads = triples[:, 0:1]
         relations = triples[:, 1:2]
