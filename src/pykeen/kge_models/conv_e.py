@@ -8,7 +8,7 @@ import torch
 import torch.autograd
 from torch import nn
 from torch.nn import Parameter, functional as F
-from torch.nn.init import xavier_normal
+from torch.nn.init import xavier_normal_
 from pykeen.kge_models.base import BaseModule, slice_triples
 from typing import Dict, Optional
 import torch.optim as optim
@@ -84,10 +84,8 @@ class ConvE(BaseModule):
         self.entity_embeddings = nn.Embedding(self.num_entities, self.embedding_dim)
         self.relation_embeddings = nn.Embedding(self.num_relations, self.embedding_dim)
         self.register_parameter('b', Parameter(torch.zeros(self.num_entities)))
-
-    def init(self):  # FIXME is this ever called?
-        xavier_normal(self.entity_embeddings.weight.data)
-        xavier_normal(self.relation_embeddings.weight.data)
+        xavier_normal_(self.entity_embeddings.weight.data)
+        xavier_normal_(self.relation_embeddings.weight.data)
 
     def predict(self, triples):
         # Check if the model has been fitted yet.
@@ -95,7 +93,7 @@ class ConvE(BaseModule):
             print('The model has not been fitted yet. Predictions are based on randomly initialized embeddings.')
             self._init_embeddings()
 
-        # triples = torch.tensor(triples, dtype=torch.long, device=self.device)
+        triples = torch.tensor(triples, dtype=torch.long, device=self.device)
         batch_size = triples.shape[0]
         subject_batch = triples[:, 0:1]
         relation_batch = triples[:, 1:2]
@@ -104,7 +102,7 @@ class ConvE(BaseModule):
         subject_batch_embedded = self.entity_embeddings(subject_batch).view(-1, 1, self.ConvE_height, self.ConvE_width)
         relation_batch_embedded = self.relation_embeddings(relation_batch).view(-1, 1,
                                                                                 self.ConvE_height, self.ConvE_width)
-        candidate_object_emebddings = self.entity_embeddings(object_batch)
+        candidate_object_embeddings = self.entity_embeddings(object_batch)
 
         # batch_size, num_input_channels, 2*height, width
         stacked_inputs = torch.cat([subject_batch_embedded, relation_batch_embedded], 2)
@@ -128,31 +126,37 @@ class ConvE(BaseModule):
         if batch_size > 1:
             x = self.bn2(x)
         x = F.relu(x)
-        x = torch.mm(x, candidate_object_emebddings.transpose(1, 0))
-        scores = torch.sigmoid(x)
+        x = torch.sum(torch.mul(x.flatten(), candidate_object_embeddings.flatten()).reshape(batch_size, -1), dim=1)
 
-        max_scores, predictions = torch.max(scores, dim=1)
+        # x = torch.mm(x, candidate_object_embeddings.transpose(1, 0))
+
+        scores = torch.sigmoid(x)
 
         # Class 0 represents false fact and class 1 represents true fact
 
-        return predictions
+        return scores.detach().cpu().numpy()
 
     def forward(self, pos_batch, neg_batch):
-        batch = torch.cat((pos_batch, neg_batch), dim=0)
-        positive_labels = torch.ones(pos_batch.shape[0], dtype=torch.float, device=self.device)
-        negative_labels = torch.zeros(neg_batch.shape[0], dtype=torch.float, device=self.device)
-        labels = torch.cat([positive_labels, negative_labels], dim=0)
+        # batch = torch.cat((pos_batch, neg_batch), dim=0)
+        # positive_labels = torch.ones(pos_batch.shape[0], dtype=torch.float, device=self.device)
+        # negative_labels = torch.zeros(neg_batch.shape[0], dtype=torch.float, device=self.device)
+        # labels = torch.cat([positive_labels, negative_labels], dim=0)
 
-        perm = torch.randperm(labels.shape[0])
+        # perm = torch.randperm(labels.shape[0])
+        #
+        # batch = batch[perm]
+        # labels = labels[perm]
 
-        batch = batch[perm]
-        labels = labels[perm]
+        batch = pos_batch
 
         batch_size = batch.shape[0]
 
         heads = batch[:, 0:1]
         relations = batch[:, 1:2]
         tails = batch[:, 2:3]
+
+        labels = torch.zeros((batch_size, self.num_entities), device=self.device)
+        labels[[torch.arange(batch_size), tails.flatten()]] = 1
 
         # batch_size, num_input_channels, width, height
         heads_embs = self.entity_embeddings(heads).view(-1, 1, self.ConvE_height, self.ConvE_width)
@@ -182,8 +186,10 @@ class ConvE(BaseModule):
             x = self.bn2(x)
         x = F.relu(x)
 
-        scores = torch.sum(torch.mm(x, tails_embs.transpose(1, 0)), dim=1)
+        x = torch.mm(x, self.entity_embeddings.weight.transpose(1,0))
 
-        predictions = torch.sigmoid(scores)
+        # scores = torch.sum(torch.mm(x, tails_embs.transpose(1, 0)), dim=1)
+
+        predictions = torch.sigmoid(x)
         loss = self.loss(predictions, labels)
         return loss

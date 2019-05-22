@@ -133,7 +133,7 @@ def _compute_rank(
     :param corrupted_subject_based:
     :param corrupted_object_based:
     :param device:
-    :param all_pos_triples_hashed: This parameter isn't used but is necessary for compatability
+    :param all_pos_triples_hashed: This parameter isn't used but is necessary for compatibility
     """
     scores_of_corrupted_subjects = kg_embedding_model.predict(corrupted_subject_based)
     scores_of_corrupted_objects = kg_embedding_model.predict(corrupted_object_based)
@@ -141,14 +141,14 @@ def _compute_rank(
     score_of_positive = kg_embedding_model.predict(torch.tensor([pos_triple], dtype=torch.long, device=device))
 
     rank_of_positive_subject_based = scores_of_corrupted_subjects.shape[0] - \
-                                     np.greater(scores_of_corrupted_subjects, score_of_positive).sum()
+                                     np.less_equal(scores_of_corrupted_subjects, score_of_positive).sum() + 1
 
     rank_of_positive_object_based = scores_of_corrupted_objects.shape[0] - \
-                                    np.greater(scores_of_corrupted_objects, score_of_positive).sum()
+                                    np.less_equal(scores_of_corrupted_objects, score_of_positive).sum() + 1
 
     return (
-        rank_of_positive_subject_based + 1,
-        rank_of_positive_object_based + 1,
+        rank_of_positive_subject_based,
+        rank_of_positive_object_based,
     )
 
 

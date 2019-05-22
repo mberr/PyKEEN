@@ -2,7 +2,7 @@
 
 """Utilities for getting and initializing KGE models."""
 
-from typing import Any, List, Mapping, Optional, Union, Iterable
+from typing import Any, List, Mapping, Optional, Union, Iterable, Tuple
 
 import logging
 import timeit
@@ -122,17 +122,33 @@ class BaseModule(nn.Module):
         loss = self.criterion(positive_scores, negative_scores, y)
         return loss
 
-    def load_triples(self,
-                     data_paths: Union[str, Iterable[str]]):
+    def load_triples_from_path(self,
+                     data_paths: Union[str, List[str]]):
         """
         Loads triples from files given their paths, creates mappings and returns the mapped triples
         :param data_paths: The paths for all files that are going to be used for training and testing
         :return: List where each items represents the mapped triples of a file
         """
 
-        if isinstance(data_paths,str):
+        if isinstance(data_paths, str):
             triples = load_data(data_paths)
-            all_triples = triples
+            mapped_triples = self.load_triples(triples)
+        else:
+            triples_list = [load_data(data_path) for data_path in data_paths]
+            mapped_triples = self.load_triples(triples_list)
+
+        return mapped_triples
+
+    def load_triples(self,
+                     triples_in: Union[np.ndarray, List[np.ndarray]]):
+        """
+        Loads triples from arrays, creates mappings and returns the mapped triples
+        :param data_paths: The paths for all files that are going to be used for training and testing
+        :return: List where each items represents the mapped triples of a file
+        """
+
+        if isinstance(triples_in, np.ndarray):
+            all_triples = triples_in
             self.entity_label_to_id, self.relation_label_to_id = create_mappings(triples=all_triples)
             mapped_triples, _, _ = create_mapped_triples(
                 triples=all_triples,
@@ -140,21 +156,20 @@ class BaseModule(nn.Module):
                 relation_label_to_id=self.relation_label_to_id
             )
         else:
-            triples_list = [load_data(data_path) for data_path in data_paths]
-            all_triples: np.ndarray = np.concatenate(triples_list, axis=0)
+            all_triples: np.ndarray = np.concatenate(triples_in, axis=0)
             self.entity_label_to_id, self.relation_label_to_id = create_mappings(triples=all_triples)
             mapped_triples = [create_mapped_triples(triples,
                                                     entity_label_to_id=self.entity_label_to_id,
                                                     relation_label_to_id=self.relation_label_to_id)[0]
-                              for triples in triples_list]
+                              for triples in triples_in]
 
         self.num_entities = len(self.entity_label_to_id)
         self.num_relations = len(self.relation_label_to_id)
 
         return mapped_triples
 
-    def map_triples(self,
-                    data_paths: Union[str, Iterable[str]]):
+    def map_triples_from_path(self,
+                    data_paths: Union[str, List[str]]):
         """
         Loads triples and returns the mapped triples given the mappings of the model
         :param data_paths: The paths for the triples files that should be mapped
@@ -163,17 +178,32 @@ class BaseModule(nn.Module):
 
         if isinstance(data_paths, str):
             triples = load_data(data_paths)
-            mapped_triples, _, _ = create_mapped_triples(
-                triples=triples,
-                entity_label_to_id=self.entity_label_to_id,
-                relation_label_to_id=self.relation_label_to_id,
-            )
+            mapped_triples = self.map_triples(triples)
         else:
             triples_list = [load_data(data_path) for data_path in data_paths]
+            mapped_triples = self.map_triples(triples_list)
+
+        return mapped_triples
+
+    def map_triples(self,
+                    triples_in: Union[np.ndarray, List[np.ndarray]]):
+        """
+        Loads triples and returns the mapped triples given the mappings of the model
+        :param data_paths: The paths for the triples files that should be mapped
+        :return: List where each items represents the mapped triples of a file
+        """
+
+        if isinstance(triples_in, np.ndarray):
+            mapped_triples, _, _ = create_mapped_triples(
+                triples=triples_in,
+                entity_label_to_id=self.entity_label_to_id,
+                relation_label_to_id=self.relation_label_to_id
+            )
+        else:
             mapped_triples = [create_mapped_triples(triples=triples,
                                                     entity_label_to_id=self.entity_label_to_id,
                                                     relation_label_to_id=self.relation_label_to_id)[0]
-                              for triples in triples_list]
+                              for triples in triples_in]
 
         return mapped_triples
 
@@ -186,7 +216,7 @@ class BaseModule(nn.Module):
             norm_type=self.entity_embedding_norm_type,
         )
 
-    def predict_object(self,
+    def predict_objects(self,
                        subject: str,
                        relation) -> str:
         """"""
@@ -204,13 +234,19 @@ class BaseModule(nn.Module):
 
         scores = self.predict(torch.tensor(triples, dtype=torch.long, device=self.device))
 
-        best_object_arg = scores.argmin()
+        sorting = scores.argsort()
 
-        best_object = object_values[best_object_arg]
+        scored_objects = np.vstack((object_values[sorting[::-1]], scores[sorting[::-1]]))
 
-        return best_object
+        return scored_objects.T
 
-    def predict_subject(self,
+    def predict_best_object(self,
+                       subject: str,
+                       relation) -> str:
+        """"""
+        return self.predict_objects(subject, relation)[0]
+
+    def predict_subjects(self,
                        obj: str,
                        relation: str) -> str:
         """"""
@@ -228,11 +264,17 @@ class BaseModule(nn.Module):
 
         scores = self.predict(torch.tensor(triples, dtype=torch.long, device=self.device))
 
-        best_subject_arg = scores.argmin()
+        sorting = scores.argsort()
 
-        best_subject = subject_values[best_subject_arg]
+        scored_subjects = np.vstack((subject_values[sorting], scores[sorting]))
 
-        return best_subject
+        return scored_subjects.T
+
+    def predict_best_subject(self,
+                       obj: str,
+                       relation) -> str:
+        """"""
+        return self.predict_subjects(obj, relation)[0]
 
     def fit(self,
             pos_triples: np.ndarray,
@@ -240,6 +282,7 @@ class BaseModule(nn.Module):
             num_epochs: int,
             batch_size: int,
             optimizer: Optional[torch.optim.Optimizer] = None,
+            weight_decay: Optional[float] = 0,
             tqdm_kwargs: Optional[Mapping[str, Any]] = None,
     ) -> List[float]:
         """
@@ -262,10 +305,10 @@ class BaseModule(nn.Module):
 
         if optimizer is None:
             # Initialize the standard optimizer with the correct parameters
-            self.optimizer = self.default_optimizer(self.parameters(), lr=self.learning_rate)
+            self.optimizer = self.default_optimizer(self.parameters(), lr=self.learning_rate, weight_decay=weight_decay)
         else:
             # Initialize the optimizer given as attribute
-            self.optimizer = optimizer(self.parameters(), lr=self.learning_rate)
+            self.optimizer = optimizer(self.parameters(), lr=self.learning_rate, weight_decay=weight_decay)
 
         log.info(f'****Run Model On {str(self.device).upper()}****')
 
@@ -283,7 +326,7 @@ class BaseModule(nn.Module):
             indices = np.arange(num_pos_triples)
             np.random.shuffle(indices)
             pos_triples = pos_triples[indices]
-            num_positives = self.batch_size // 2
+            num_positives = self.batch_size
             pos_batches = _split_list_in_batches(input_list=pos_triples, batch_size=num_positives)
             current_epoch_loss = 0.
 
@@ -293,29 +336,29 @@ class BaseModule(nn.Module):
 
                 batch_subjs, batch_relations, batch_objs = slice_triples(pos_batch)
 
-                num_subj_corrupt = len(pos_batch) // 2
-                num_obj_corrupt = len(pos_batch) - num_subj_corrupt
+                # num_subj_corrupt = len(pos_batch) // 2
+                # num_obj_corrupt = len(pos_batch) - num_subj_corrupt
                 pos_batch = torch.tensor(pos_batch, dtype=torch.long, device=self.device)
 
-                corrupted_subj_indices = np.random.choice(np.arange(0, self.num_entities), size=num_subj_corrupt)
-                corrupted_subjects = np.reshape(all_entities[corrupted_subj_indices], newshape=(-1, 1))
-                subject_based_corrupted_triples = np.concatenate(
-                    [corrupted_subjects, batch_relations[:num_subj_corrupt], batch_objs[:num_subj_corrupt]], axis=1)
-
-                corrupted_obj_indices = np.random.choice(np.arange(0, self.num_entities), size=num_obj_corrupt)
-                corrupted_objects = np.reshape(all_entities[corrupted_obj_indices], newshape=(-1, 1))
-
-                object_based_corrupted_triples = np.concatenate(
-                    [batch_subjs[num_subj_corrupt:], batch_relations[num_subj_corrupt:], corrupted_objects], axis=1)
-
-                neg_batch = np.concatenate([subject_based_corrupted_triples, object_based_corrupted_triples], axis=0)
-
-                neg_batch = torch.tensor(neg_batch, dtype=torch.long, device=self.device)
+                # corrupted_subj_indices = np.random.choice(np.arange(0, self.num_entities), size=num_subj_corrupt)
+                # corrupted_subjects = np.reshape(all_entities[corrupted_subj_indices], newshape=(-1, 1))
+                # subject_based_corrupted_triples = np.concatenate(
+                #     [corrupted_subjects, batch_relations[:num_subj_corrupt], batch_objs[:num_subj_corrupt]], axis=1)
+                #
+                # corrupted_obj_indices = np.random.choice(np.arange(0, self.num_entities), size=num_obj_corrupt)
+                # corrupted_objects = np.reshape(all_entities[corrupted_obj_indices], newshape=(-1, 1))
+                #
+                # object_based_corrupted_triples = np.concatenate(
+                #     [batch_subjs[num_subj_corrupt:], batch_relations[num_subj_corrupt:], corrupted_objects], axis=1)
+                #
+                # neg_batch = np.concatenate([subject_based_corrupted_triples, object_based_corrupted_triples], axis=0)
+                #
+                # neg_batch = torch.tensor(neg_batch, dtype=torch.long, device=self.device)
 
                 # Recall that torch *accumulates* gradients. Before passing in a
                 # new instance, you need to zero out the gradients from the old instance
                 self.optimizer.zero_grad()
-                loss = self(pos_batch, neg_batch)
+                loss = self(pos_batch, None)
                 current_epoch_loss += (loss.item() * current_batch_size)
 
                 loss.backward()

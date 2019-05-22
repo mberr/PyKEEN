@@ -7,6 +7,7 @@ from typing import Dict, Optional
 import torch
 import torch.autograd
 from torch import nn
+from torch.nn.init import xavier_normal_
 
 from pykeen.constants import ERMLP_NAME
 from pykeen.kge_models.base import BaseModule, slice_triples
@@ -43,10 +44,22 @@ class ERMLP(BaseModule):
         self.relation_embeddings = None
 
         self.mlp = nn.Sequential(
-            nn.Linear(3 * self.embedding_dim, self.embedding_dim),
+            nn.Linear(2 * self.embedding_dim, 300),
+            nn.BatchNorm1d(300),
             nn.ReLU(),
-            nn.Linear(self.embedding_dim, 1),
+            nn.Linear(300, self.embedding_dim),
+            nn.BatchNorm1d(self.embedding_dim),
+            nn.ReLU(),
         )
+
+        self.mlp.apply(self._init_weights)
+
+        self.criterion = nn.BCELoss()
+
+    def _init_weights(self, m):
+        if type(m) == nn.Linear:
+            xavier_normal_(m.weight.data)
+            m.bias.data.fill_(0.01)
 
     def _init_embeddings(self):
         super()._init_embeddings()
@@ -59,13 +72,40 @@ class ERMLP(BaseModule):
             self._init_embeddings()
 
         triples = torch.tensor(triples, dtype=torch.long, device=self.device)
-        scores = self._score_triples(triples)
-        return scores.detach().cpu().numpy()
 
-    def forward(self, positives, negatives):
-        positive_scores = self._score_triples(positives)
-        negative_scores = self._score_triples(negatives)
-        loss = self._compute_loss(positive_scores=positive_scores, negative_scores=negative_scores)
+        scores = self._score_triples(triples)
+        predictions = torch.sigmoid(scores)
+
+        return predictions.detach().cpu().numpy()
+
+    def forward(self, pos_batch, neg_batch):
+        batch = torch.cat((pos_batch, neg_batch), dim=0)
+        positive_labels = torch.ones(pos_batch.shape[0], dtype=torch.float, device=self.device)
+        negative_labels = torch.zeros(neg_batch.shape[0], dtype=torch.float, device=self.device)
+        labels = torch.cat([positive_labels, negative_labels], dim=0)
+
+        perm = torch.randperm(labels.shape[0])
+
+        batch = batch[perm]
+        labels = labels[perm]
+
+        scores = self._score_triples(batch)
+        predictions = torch.sigmoid(scores)
+
+        loss = self.criterion(predictions, labels)
+        return loss
+
+    # def forward(self, positives, negatives):
+    #
+    #     positive_scores = self._score_triples(positives)
+    #     negative_scores = self._score_triples(negatives)
+    #     loss = self._compute_loss(positive_scores=positive_scores, negative_scores=negative_scores)
+    #     return loss
+
+    def _compute_loss(self, positive_scores: torch.Tensor, negative_scores: torch.Tensor) -> torch.Tensor:
+        y = torch.FloatTensor([-1])
+        y = y.expand(positive_scores.shape[0]).to(self.device)
+        loss = self.criterion(positive_scores, negative_scores, y)
         return loss
 
     def _score_triples(self, triples):
@@ -74,8 +114,17 @@ class ERMLP(BaseModule):
         return scores
 
     def _compute_scores(self, head_embeddings, relation_embeddings, tail_embeddings):
-        x_s = torch.cat([head_embeddings, relation_embeddings, tail_embeddings], 1)
-        scores = - self.mlp(x_s)
+        # batch_size, num_input_channels, width, height
+        heads_embs = head_embeddings.view(-1, self.embedding_dim)
+        relation_embs = relation_embeddings.view(-1, self.embedding_dim)
+        tails_embs = tail_embeddings.view(-1, self.embedding_dim)
+
+        # batch_size, num_input_channels, 2*height, width
+        concat_inputs = torch.cat([heads_embs, relation_embs], 1)
+
+        mlp_output = self.mlp(concat_inputs)
+
+        scores = torch.sum(torch.mm(mlp_output, tails_embs.transpose(1, 0)), dim=1)
         return scores
 
     def _get_triple_embeddings(self, triples):
