@@ -40,8 +40,28 @@ def update_hits_at_k(
         else:
             values.append(0.0)
 
+def update_multiple_hits_at_k(
+        hits_at_k_values: Dict[int, List[float]],
+        ranks_of_positive_subjects_based: List[int],
+        ranks_of_positive_objects_based: List[int]
+) -> None:
+    """Update the Hits@K dictionary for two values."""
+    for k, values in hits_at_k_values.items():
+        for rank_of_positive_subject_based in ranks_of_positive_subjects_based:
+            if rank_of_positive_subject_based <= k:
+                values.append(1.0)
+            else:
+                values.append(0.0)
+
+        for rank_of_positive_object_based in ranks_of_positive_objects_based:
+            if rank_of_positive_object_based <= k:
+                values.append(1.0)
+            else:
+                values.append(0.0)
+
 
 def _create_corrupted_triples(triple, all_entities, device):
+    triple = triple.detach().cpu().numpy()
     candidate_entities_subject_based = all_entities[all_entities != triple[0:1]].reshape((-1, 1))
     candidate_entities_object_based = all_entities[all_entities != triple[2:3]].reshape((-1, 1))
 
@@ -138,17 +158,18 @@ def _compute_rank(
     scores_of_corrupted_subjects = kg_embedding_model.predict(corrupted_subject_based)
     scores_of_corrupted_objects = kg_embedding_model.predict(corrupted_object_based)
 
-    score_of_positive = kg_embedding_model.predict(torch.tensor([pos_triple], dtype=torch.long, device=device))
+    score_of_positive = kg_embedding_model.predict(pos_triple.reshape(-1,3))
 
     rank_of_positive_subject_based = scores_of_corrupted_subjects.shape[0] - \
-                                     np.less_equal(scores_of_corrupted_subjects, score_of_positive).sum() + 1
+                                     (scores_of_corrupted_subjects <= score_of_positive).sum() + 1
 
     rank_of_positive_object_based = scores_of_corrupted_objects.shape[0] - \
-                                    np.less_equal(scores_of_corrupted_objects, score_of_positive).sum() + 1
+                                    (scores_of_corrupted_objects <= score_of_positive).sum() + 1
+
 
     return (
-        rank_of_positive_subject_based,
-        rank_of_positive_object_based,
+        rank_of_positive_subject_based.detach().cpu().numpy(),
+        rank_of_positive_object_based.detach().cpu().numpy(),
     )
 
 
@@ -185,6 +206,8 @@ def compute_metric_results(
     start = timeit.default_timer()
 
     ranks: List[int] = []
+    ranks_of_positive_subjects_based = []
+    ranks_of_positive_objects_based = []
     hits_at_k_values = {
         k: []
         for k in (ks or DEFAULT_HITS_AT_K)
@@ -203,15 +226,21 @@ def compute_metric_results(
         _compute_rank
     )
 
+    mapped_test_triples = torch.tensor(mapped_test_triples, dtype=torch.long, device=device)
+
     if use_tqdm:
         mapped_test_triples = tqdm(mapped_test_triples, desc=f'{EMOJI} corrupting triples')
+
     for pos_triple in mapped_test_triples:
+        # start = timeit.default_timer()
         corrupted_subject_based, corrupted_object_based = _create_corrupted_triples(
             triple=pos_triple,
             all_entities=all_entities,
             device=device,
         )
+        # log.info(f"Corrupting triples took {timeit.default_timer() - start:.3f} seconds")
 
+        # start = timeit.default_timer()
         rank_of_positive_subject_based, rank_of_positive_object_based = compute_rank_fct(
             kg_embedding_model=kg_embedding_model,
             pos_triple=pos_triple,
@@ -220,16 +249,19 @@ def compute_metric_results(
             device=device,
             all_pos_triples_hashed=all_pos_triples_hashed,
         )
+        # log.info(f"Calculating scores took {timeit.default_timer() - start:.3f} seconds")
 
         ranks.append(rank_of_positive_subject_based)
         ranks.append(rank_of_positive_object_based)
+        ranks_of_positive_objects_based.append(rank_of_positive_object_based)
+        ranks_of_positive_subjects_based.append(rank_of_positive_subject_based)
 
-        # Compute hits@k for k in {1,3,5,10}
-        update_hits_at_k(
-            hits_at_k_values,
-            rank_of_positive_subject_based=rank_of_positive_subject_based,
-            rank_of_positive_object_based=rank_of_positive_object_based,
-        )
+    # Compute hits@k for k in {1,3,5,10}
+    update_multiple_hits_at_k(
+        hits_at_k_values,
+        ranks_of_positive_subjects_based=ranks_of_positive_subjects_based,
+        ranks_of_positive_objects_based=ranks_of_positive_objects_based,
+    )
 
     mean_rank = float(np.mean(ranks))
     hits_at_k: Dict[int, float] = {
@@ -238,7 +270,7 @@ def compute_metric_results(
     }
 
     stop = timeit.default_timer()
-    log.info("Evaluation took %.2fs seconds", stop - start)
+    log.info(f"Evaluation took {stop-start:.2f} seconds")
 
     return MetricResults(
         mean_rank=mean_rank,
