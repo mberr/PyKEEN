@@ -60,59 +60,55 @@ def update_multiple_hits_at_k(
                 values.append(0.0)
 
 
-def _create_corrupted_triples(triple, all_entities, device):
-    triple = triple.detach().cpu().numpy()
-    candidate_entities_subject_based = all_entities[all_entities != triple[0:1]].reshape((-1, 1))
-    candidate_entities_object_based = all_entities[all_entities != triple[2:3]].reshape((-1, 1))
-
-    # Extract current test tuple: Either (subject,predicate) or (predicate,object)
-    tuple_subject_based = np.reshape(a=triple[1:3], newshape=(1, 2))
-    tuple_object_based = np.reshape(a=triple[0:2], newshape=(1, 2))
-
-    # Copy current test tuple
-    tuples_subject_based = np.repeat(a=tuple_subject_based, repeats=candidate_entities_subject_based.shape[0],
-                                     axis=0)
-    tuples_object_based = np.repeat(a=tuple_object_based, repeats=candidate_entities_object_based.shape[0], axis=0)
-
-    corrupted_subject_based = np.concatenate([candidate_entities_subject_based, tuples_subject_based], axis=1)
-    corrupted_subject_based = torch.tensor(corrupted_subject_based, dtype=torch.long, device=device)
-
-    corrupted_object_based = np.concatenate([tuples_object_based, candidate_entities_object_based], axis=1)
-    corrupted_object_based = torch.tensor(corrupted_object_based, dtype=torch.long, device=device)
-
-    return corrupted_subject_based, corrupted_object_based
-
-
 def _filter_corrupted_triples(
-        corrupted_subject_based,
-        corrupted_object_based,
-        all_pos_triples_hashed,
+        pos_triple,
+        subject_batch,
+        relation_batch,
+        object_batch,
+        all_pos_triples,
 ):
-    # TODO: Check
-    corrupted_subject_based_hashed = np.apply_along_axis(_hash_triples, 1, corrupted_subject_based)
-    mask = np.in1d(corrupted_subject_based_hashed, all_pos_triples_hashed, invert=True)
-    mask = np.where(mask)[0]
-    corrupted_subject_based = corrupted_subject_based[mask]
+    # What does this function do?
+    # TODO: Check if it is correct and how much slower it is
+    subject = pos_triple[0:1]
+    relation = pos_triple[1:2]
+    object = pos_triple[2:3]
 
-    corrupted_object_based_hashed = np.apply_along_axis(_hash_triples, 1, corrupted_object_based)
-    mask = np.in1d(corrupted_object_based_hashed, all_pos_triples_hashed, invert=True)
-    mask = np.where(mask)[0]
+    subject_filter = all_pos_triples[:,0:1] == subject.detach().cpu().numpy()
+    relation_filter = all_pos_triples[:, 1:2] == relation.detach().cpu().numpy()
+    object_filter = all_pos_triples[:, 2:3] == object.detach().cpu().numpy()
 
-    if mask.size == 0:
-        raise Exception("User selected filtered metric computation, but all corrupted triples exists"
-                        "also as positive triples.")
-    corrupted_object_based = corrupted_object_based[mask]
+    # Short objects batch list
+    filter = (subject_filter & relation_filter)
+    objects_in_triples = all_pos_triples[:, 2:3][filter]
+    mask = np.isin(object_batch.detach().cpu().numpy(), objects_in_triples, invert=True)
+    # if mask.sum() == 0:
+    #     raise Exception("User selected filtered metric computation, but all corrupted triples exists"
+    #                     "also as positive triples.")
+    object_batch = object_batch[mask]
 
-    return corrupted_subject_based, corrupted_object_based
+    # Short subjects batch list
+    filter = (object_filter & relation_filter)
+    subjects_in_triples = all_pos_triples[:, 0:1][filter]
+    mask = np.isin(subject_batch.detach().cpu().numpy(), subjects_in_triples, invert=True)
+    subject_batch = subject_batch[mask]
+    # The relation batch has to have the same size as the subject batch
+    relation_batch = relation_batch[mask]
+
+    # if mask.size == 0:
+    #     raise Exception("User selected filtered metric computation, but all corrupted triples exists"
+    #                     "also as positive triples.")
+
+    return subject_batch, relation_batch, object_batch
 
 
 def _compute_filtered_rank(
         kg_embedding_model,
         pos_triple,
-        corrupted_subject_based,
-        corrupted_object_based,
+        subject_batch,
+        relation_batch,
+        object_batch,
         device,
-        all_pos_triples_hashed,
+        all_pos_triples,
 ) -> Tuple[int, int]:
     """
 
@@ -123,28 +119,33 @@ def _compute_filtered_rank(
     :param device:
     :param all_pos_triples_hashed:
     """
-    corrupted_subject_based, corrupted_object_based = _filter_corrupted_triples(
-        corrupted_subject_based=corrupted_subject_based,
-        corrupted_object_based=corrupted_object_based,
-        all_pos_triples_hashed=all_pos_triples_hashed)
+    subject_batch, relation_batch, object_batch = _filter_corrupted_triples(
+        pos_triple=pos_triple,
+        subject_batch = subject_batch,
+        relation_batch = relation_batch,
+        object_batch = object_batch,
+        all_pos_triples=all_pos_triples,
+    )
 
     return _compute_rank(
         kg_embedding_model=kg_embedding_model,
         pos_triple=pos_triple,
-        corrupted_subject_based=corrupted_subject_based,
-        corrupted_object_based=corrupted_object_based,
+        subject_batch=subject_batch,
+        relation_batch=relation_batch,
+        object_batch=object_batch,
         device=device,
-        all_pos_triples_hashed=all_pos_triples_hashed,
+        all_pos_triples=all_pos_triples,
     )
 
 
 def _compute_rank(
         kg_embedding_model,
         pos_triple,
-        corrupted_subject_based,
-        corrupted_object_based,
+        subject_batch,
+        relation_batch,
+        object_batch,
         device,
-        all_pos_triples_hashed=None,
+        all_pos_triples,
 ) -> Tuple[int, int]:
     """
 
@@ -155,8 +156,12 @@ def _compute_rank(
     :param device:
     :param all_pos_triples_hashed: This parameter isn't used but is necessary for compatibility
     """
-    scores_of_corrupted_subjects = kg_embedding_model.predict(corrupted_subject_based)
-    scores_of_corrupted_objects = kg_embedding_model.predict(corrupted_object_based)
+    subject = pos_triple[0:1]
+    relation = pos_triple[1:2]
+    object = pos_triple[2:3]
+
+    scores_of_corrupted_subjects = kg_embedding_model.predict_for_ranking(subject_batch, relation_batch, object)
+    scores_of_corrupted_objects = kg_embedding_model.predict_for_ranking(subject, relation, object_batch)
 
     score_of_positive = kg_embedding_model.predict(pos_triple.reshape(-1,3))
 
@@ -167,9 +172,15 @@ def _compute_rank(
                                     (scores_of_corrupted_objects <= score_of_positive).sum() + 1
 
 
+    if (rank_of_positive_object_based > 1000) or (rank_of_positive_subject_based > 1000):
+        return (
+            rank_of_positive_subject_based.detach().cpu().numpy(),
+            rank_of_positive_object_based.detach().cpu().numpy(), pos_triple
+        )
+
     return (
         rank_of_positive_subject_based.detach().cpu().numpy(),
-        rank_of_positive_object_based.detach().cpu().numpy(),
+        rank_of_positive_object_based.detach().cpu().numpy(), None
     )
 
 
@@ -215,10 +226,8 @@ def compute_metric_results(
     kg_embedding_model = kg_embedding_model.eval()
     kg_embedding_model = kg_embedding_model.to(device)
 
-    all_entities = np.arange(kg_embedding_model.num_entities)
-
     all_pos_triples = np.concatenate([mapped_train_triples, mapped_test_triples], axis=0)
-    all_pos_triples_hashed = np.apply_along_axis(_hash_triples, 1, all_pos_triples)
+    all_entities = torch.arange(kg_embedding_model.num_entities, device=device)
 
     compute_rank_fct: Callable[..., Tuple[int, int]] = (
         _compute_filtered_rank
@@ -228,33 +237,42 @@ def compute_metric_results(
 
     mapped_test_triples = torch.tensor(mapped_test_triples, dtype=torch.long, device=device)
 
+    mapped_test_triples = mapped_test_triples[(mapped_test_triples[:,1:2].flatten()).argsort()]
+
+    weird_triples = []
+
     if use_tqdm:
         mapped_test_triples = tqdm(mapped_test_triples, desc=f'{EMOJI} corrupting triples')
 
     for pos_triple in mapped_test_triples:
-        # start = timeit.default_timer()
-        corrupted_subject_based, corrupted_object_based = _create_corrupted_triples(
-            triple=pos_triple,
-            all_entities=all_entities,
-            device=device,
-        )
-        # log.info(f"Corrupting triples took {timeit.default_timer() - start:.3f} seconds")
+        subject = pos_triple[0:1]
+        relation = pos_triple[1:2]
+        object = pos_triple[2:3]
 
-        # start = timeit.default_timer()
-        rank_of_positive_subject_based, rank_of_positive_object_based = compute_rank_fct(
+        subject_batch = all_entities[all_entities != subject]
+        relation_batch = torch.repeat_interleave(relation, kg_embedding_model.num_entities-1)
+        object_batch = all_entities[all_entities != object]
+
+        rank_of_positive_subject_based, rank_of_positive_object_based, weird_triple = compute_rank_fct(
             kg_embedding_model=kg_embedding_model,
             pos_triple=pos_triple,
-            corrupted_subject_based=corrupted_subject_based,
-            corrupted_object_based=corrupted_object_based,
+            subject_batch=subject_batch,
+            relation_batch=relation_batch,
+            object_batch=object_batch,
             device=device,
-            all_pos_triples_hashed=all_pos_triples_hashed,
+            all_pos_triples=all_pos_triples,
         )
         # log.info(f"Calculating scores took {timeit.default_timer() - start:.3f} seconds")
 
+        if weird_triple is not None:
+            weird_triples.append(weird_triple)
+            if len(weird_triples) % 100 == 0:
+                print('Let me have a look')
         ranks.append(rank_of_positive_subject_based)
         ranks.append(rank_of_positive_object_based)
         ranks_of_positive_objects_based.append(rank_of_positive_object_based)
         ranks_of_positive_subjects_based.append(rank_of_positive_subject_based)
+
 
     # Compute hits@k for k in {1,3,5,10}
     update_multiple_hits_at_k(

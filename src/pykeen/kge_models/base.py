@@ -123,7 +123,8 @@ class BaseModule(nn.Module):
         return loss
 
     def load_triples_from_path(self,
-                     data_paths: Union[str, List[str]]):
+                               data_paths: Union[str, List[str]],
+                               ):
         """
         Loads triples from files given their paths, creates mappings and returns the mapped triples
         :param data_paths: The paths for all files that are going to be used for training and testing
@@ -288,6 +289,7 @@ class BaseModule(nn.Module):
             batch_size: int,
             optimizer: Optional[torch.optim.Optimizer] = None,
             weight_decay: Optional[float] = 0,
+            create_inverse_triples: bool = False,
             tqdm_kwargs: Optional[Mapping[str, Any]] = None,
     ) -> List[float]:
         """
@@ -300,6 +302,15 @@ class BaseModule(nn.Module):
         :param tqdm_kwargs: Keyword arguments that should be used for the tdqm.trange class
         :return: loss_per_epoch: The loss of each epoch during training
         """
+
+
+        if create_inverse_triples:
+            inverse_triples = np.flip(pos_triples)
+            inverse_triples[:, 1:2] += self.num_relations
+            pos_triples = np.concatenate((pos_triples, inverse_triples))
+            self.num_relations = self.num_relations * 2
+
+
         self._init_embeddings()
 
         self.to(self.device)
@@ -318,27 +329,31 @@ class BaseModule(nn.Module):
 
         loss_per_epoch = []
         num_pos_triples = pos_triples.shape[0]
-        all_entities = np.arange(self.num_entities)
+        # all_entities = np.arange(self.num_entities)
 
         start_training = timeit.default_timer()
+
+        epoch_loss = None
 
         _tqdm_kwargs = dict(desc='Training epoch')
         if tqdm_kwargs:
             _tqdm_kwargs.update(tqdm_kwargs)
 
-        for epoch in trange(self.num_epochs, **_tqdm_kwargs):
-            indices = np.arange(num_pos_triples)
+        indices = np.arange(num_pos_triples)
+        num_positives = self.batch_size
+        trange_bar = trange(self.num_epochs, **_tqdm_kwargs)
+        for epoch in trange_bar:
             np.random.shuffle(indices)
             pos_triples = pos_triples[indices]
-            num_positives = self.batch_size
             pos_batches = _split_list_in_batches(input_list=pos_triples, batch_size=num_positives)
+            pos_triples_tensor = torch.tensor(pos_triples, device=self.device)
             current_epoch_loss = 0.
 
             for i, pos_batch in enumerate(pos_batches):
                 # TODO: Implement helper functions for different negative sampling approaches
                 current_batch_size = len(pos_batch)
 
-                batch_subjs, batch_relations, batch_objs = slice_triples(pos_batch)
+                # batch_subjs, batch_relations, batch_objs = slice_triples(pos_batch)
 
                 # num_subj_corrupt = len(pos_batch) // 2
                 # num_obj_corrupt = len(pos_batch) - num_subj_corrupt
@@ -361,8 +376,22 @@ class BaseModule(nn.Module):
 
                 # Recall that torch *accumulates* gradients. Before passing in a
                 # new instance, you need to zero out the gradients from the old instance
+                # TODO: Check time improvement when precalculating all triple combinations
+
+                match_on_subject = pos_triples_tensor[:, 0:1] == pos_batch[:, 0:1][:, None]
+                match_on_relation = pos_triples_tensor[:, 1:2] == pos_batch[:, 1:2][:, None]
+                match_index = (match_on_subject & match_on_relation).squeeze()
+
+                labels = torch.zeros((current_batch_size, self.num_entities), device=self.device)
+
+                object_numbers = pos_triples_tensor[:, 2:3]
+
+                for i in range(current_batch_size):
+                    objects = object_numbers[match_index[i]]
+                    labels[i, objects] = 1
+
                 self.optimizer.zero_grad()
-                loss = self(pos_batch, None)
+                loss = self(pos_batch, labels)
                 current_epoch_loss += (loss.item() * current_batch_size * self.entity_embeddings.num_embeddings)
 
                 loss.backward()
@@ -370,7 +399,11 @@ class BaseModule(nn.Module):
 
             # log.info(f"Epoch {str(epoch)} took {str(round(stop - start))} seconds \n")
             # Track epoch loss
-            loss_per_epoch.append(current_epoch_loss / (len(pos_triples) * self.entity_embeddings.num_embeddings))
+            previous_loss = epoch_loss
+            epoch_loss = current_epoch_loss / (len(pos_triples) * self.entity_embeddings.num_embeddings)
+            loss_per_epoch.append(epoch_loss)
+            trange_bar.set_postfix(loss=epoch_loss, previous_loss=previous_loss)
+
 
         stop_training = timeit.default_timer()
         log.info(f"Training took {str(round(stop_training - start_training))} seconds \n")

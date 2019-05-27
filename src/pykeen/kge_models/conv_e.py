@@ -12,6 +12,7 @@ from torch.nn.init import xavier_normal_
 from pykeen.kge_models.base import BaseModule, slice_triples
 from typing import Dict, Optional
 import torch.optim as optim
+from functools import lru_cache
 
 from pykeen.constants import (
     CONV_E_FEATURE_MAP_DROPOUT, CONV_E_HEIGHT, CONV_E_INPUT_CHANNELS, CONV_E_INPUT_DROPOUT, CONV_E_KERNEL_HEIGHT,
@@ -88,23 +89,12 @@ class ConvE(BaseModule):
         xavier_normal_(self.entity_embeddings.weight.data)
         xavier_normal_(self.relation_embeddings.weight.data)
 
-    def predict(self, triples):
-        # Check if the model has been fitted yet.
-        if self.entity_embeddings is None:
-            print('The model has not been fitted yet. Predictions are based on randomly initialized embeddings.')
-            self._init_embeddings()
 
-        # triples = torch.tensor(triples, dtype=torch.long, device=self.device)
-        batch_size = triples.shape[0]
-        subject_batch = triples[:, 0:1]
-        relation_batch = triples[:, 1:2]
-        object_batch = triples[:, 2:3].view(-1)
-
-        subject_batch_embedded = self.entity_embeddings(subject_batch).view(-1, 1, self.ConvE_height, self.ConvE_width)
-        relation_batch_embedded = self.relation_embeddings(relation_batch).view(-1, 1,
+    def forward_conv(self, subject, relation):
+        batch_size = subject.shape[0]
+        subject_batch_embedded = self.entity_embeddings(subject).view(-1, 1, self.ConvE_height, self.ConvE_width)
+        relation_batch_embedded = self.relation_embeddings(relation).view(-1, 1,
                                                                                 self.ConvE_height, self.ConvE_width)
-        candidate_object_embeddings = self.entity_embeddings(object_batch)
-
         # batch_size, num_input_channels, 2*height, width
         stacked_inputs = torch.cat([subject_batch_embedded, relation_batch_embedded], 2)
 
@@ -127,9 +117,27 @@ class ConvE(BaseModule):
         if batch_size > 1:
             x = self.bn2(x)
         x = F.relu(x)
-        x = torch.sum(torch.mul(x.flatten(), candidate_object_embeddings.flatten()).reshape(batch_size, -1), dim=1)
 
-        # x = torch.mm(x, candidate_object_embeddings.transpose(1, 0))
+        return x
+
+    def predict_right(self, triple):
+        """
+        Score all possible objects except the object of the true triple
+        :param triple:
+        :return:
+        """
+        subject = triple[0:1]
+        relation = triple[1:2]
+        object = triple[2:3]
+
+        all_entities = torch.arange(self.num_entities, device=self.device)
+
+        object_batch = all_entities[all_entities!=object]
+
+        candidate_object_embeddings = self.entity_embeddings(object_batch)
+
+        x = self.forward_conv(subject, relation)
+        x = torch.mm(x, candidate_object_embeddings.transpose(1, 0)).flatten()
 
         scores = torch.sigmoid(x)
 
@@ -137,55 +145,89 @@ class ConvE(BaseModule):
 
         return scores
 
-    def forward(self, pos_batch, neg_batch):
-        # batch = torch.cat((pos_batch, neg_batch), dim=0)
-        # positive_labels = torch.ones(pos_batch.shape[0], dtype=torch.float, device=self.device)
-        # negative_labels = torch.zeros(neg_batch.shape[0], dtype=torch.float, device=self.device)
-        # labels = torch.cat([positive_labels, negative_labels], dim=0)
+    def predict_left(self, triple):
+        """
+        Score all possible subjects except the subject of the true triple
+        :param triple:
+        :return:
+        """
+        # triples = torch.tensor(triples, dtype=torch.long, device=self.device)
+        subject = triple[0:1]
+        relation = triple[1:2]
+        object = triple[2:3]
 
-        # perm = torch.randperm(labels.shape[0])
-        #
-        # batch = batch[perm]
-        # labels = labels[perm]
+        all_entities = torch.arange(self.num_entities, device=self.device)
 
+        subject_batch = all_entities[all_entities!=subject]
+        relation_batch = torch.repeat_interleave(relation, self.num_entities)
+
+        candidate_object_embeddings = self.entity_embeddings(object)
+
+        x = self.forward_conv(subject_batch, relation_batch)
+        x = torch.mm(x, candidate_object_embeddings.transpose(1, 0)).flatten()
+
+        scores = torch.sigmoid(x)
+
+        # Class 0 represents false fact and class 1 represents true fact
+
+        return scores
+
+    def predict_for_ranking(self, subject_batch, relation_batch, object_batch):
+        """
+        Score all possible subjects except the subject of the true triple
+        :param triple:
+        :return:
+        """
+
+        candidate_object_embeddings = self.entity_embeddings(object_batch)
+
+        x = self.forward_conv(subject_batch, relation_batch)
+        x = torch.mm(x, candidate_object_embeddings.transpose(1, 0)).flatten()
+
+        scores = torch.sigmoid(x)
+
+        # Class 0 represents false fact and class 1 represents true fact
+
+        return scores
+
+
+    def predict(self, triples):
+        # Check if the model has been fitted yet.
+        if self.entity_embeddings is None:
+            print('The model has not been fitted yet. Predictions are based on randomly initialized embeddings.')
+            self._init_embeddings()
+
+        # triples = torch.tensor(triples, dtype=torch.long, device=self.device)
+        batch_size = triples.shape[0]
+        subject_batch = triples[:, 0:1]
+        relation_batch = triples[:, 1:2]
+        object_batch = triples[:, 2:3].view(-1)
+
+        candidate_object_embeddings = self.entity_embeddings(object_batch)
+
+        x = self.forward_conv(subject_batch, relation_batch)
+        x = torch.sum(torch.mul(x.flatten(), candidate_object_embeddings.flatten()).reshape(batch_size, -1), dim=1)
+
+        scores = torch.sigmoid(x)
+
+        # Class 0 represents false fact and class 1 represents true fact
+        return scores
+
+    def forward(self, pos_batch, labels):
         batch = pos_batch
 
         batch_size = batch.shape[0]
 
         heads = batch[:, 0:1]
         relations = batch[:, 1:2]
-        tails = batch[:, 2:3]
+        # tails = batch[:, 2:3]
 
-        labels = torch.zeros((batch_size, self.num_entities), device=self.device)
-        labels[[torch.arange(batch_size), tails.flatten()]] = 1
+        # TODO: Make smart unpacking of all values for labels
+        # labels_full = torch.zeros((batch_size, self.num_entities), device=self.device)
+        # for i in range(batch_size):
+        #     labels_full[i, labels[i]] = 1
 
-        # batch_size, num_input_channels, width, height
-        heads_embs = self.entity_embeddings(heads).view(-1, 1, self.ConvE_height, self.ConvE_width)
-        relation_embs = self.relation_embeddings(relations).view(-1, 1, self.ConvE_height, self.ConvE_width)
-        tails_embs = self.entity_embeddings(tails).view(-1, self.embedding_dim)
-
-        # batch_size, num_input_channels, 2*height, width
-        stacked_inputs = torch.cat([heads_embs, relation_embs], 2)
-
-        # batch_size, num_input_channels, 2*height, width
-        stacked_inputs = self.bn0(stacked_inputs)
-
-        # batch_size, num_input_channels, 2*height, width
-        x = self.inp_drop(stacked_inputs)
-        # (N,C_out,H_out,W_out)
-        x = self.conv1(x)
-
-        x = self.bn1(x)
-        x = F.relu(x)
-        x = self.feature_map_drop(x)
-        # batch_size, num_output_channels * (2 * height - ConvE_kernel_height + 1) * (width - ConvE_kernel_width + 1)
-        x = x.view(batch_size, -1)
-        x = self.fc(x)
-        x = self.hidden_drop(x)
-
-        if batch_size > 1:
-            x = self.bn2(x)
-        x = F.relu(x)
+        x = self.forward_conv(heads, relations)
 
         x = torch.mm(x, self.entity_embeddings.weight.transpose(1,0))
 
