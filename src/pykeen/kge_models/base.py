@@ -6,6 +6,7 @@ from typing import Any, List, Mapping, Optional, Union, Iterable, Tuple
 
 import logging
 import timeit
+import tqdm
 from tqdm import trange
 import random
 
@@ -290,6 +291,8 @@ class BaseModule(nn.Module):
             optimizer: Optional[torch.optim.Optimizer] = None,
             weight_decay: Optional[float] = 0,
             create_inverse_triples: bool = False,
+            label_smoothing: bool = False,
+            labels: Optional[List[float]] = None,
             tqdm_kwargs: Optional[Mapping[str, Any]] = None,
     ) -> List[float]:
         """
@@ -303,15 +306,42 @@ class BaseModule(nn.Module):
         :return: loss_per_epoch: The loss of each epoch during training
         """
 
-
+        start = timeit.default_timer()
+        log.info(f'Creating inverse triples')
+        # This also creates
         if create_inverse_triples:
-            inverse_triples = np.flip(pos_triples)
+            inverse_triples = np.flip(pos_triples.copy())
             inverse_triples[:, 1:2] += self.num_relations
             pos_triples = np.concatenate((pos_triples, inverse_triples))
-            self.num_relations = self.num_relations * 2
-
+            # When the model has not been trained as inverse_model before, the number of relations have to be doubled
+            if not self.inverse_model:
+                self.num_relations = self.num_relations * 2
+                self.inverse_model = True
 
         self._init_embeddings()
+
+        if label_smoothing is not None:
+            self.label_smoothing = label_smoothing
+
+        log.info(f'Created inverse triples. It took {timeit.default_timer() - start:.2f} seconds')
+
+        log.info(f'Creating labels for training')
+
+        from collections import defaultdict
+        triple_dict = defaultdict(set)
+        for row in tqdm.tqdm(pos_triples):
+            triple_dict[(row[0], row[1])].add(row[2])
+
+        # Create lists out of sets for proper numpy indexing when loading the labels
+        triple_dict = {key:list(value) for key, value in triple_dict.items()}
+
+        unique_s_p = np.array(list(triple_dict.keys()))
+        labels_list = np.array(list(triple_dict.values()))
+
+        log.info(f'Created labels for training')
+
+        # Now we can overwrite pos_triples
+        pos_triples = unique_s_p
 
         self.to(self.device)
 
@@ -342,62 +372,29 @@ class BaseModule(nn.Module):
         indices = np.arange(num_pos_triples)
         num_positives = self.batch_size
         trange_bar = trange(self.num_epochs, **_tqdm_kwargs)
-        for epoch in trange_bar:
+        for _ in trange_bar:
             np.random.shuffle(indices)
             pos_triples = pos_triples[indices]
+            labels_list = np.array([labels_list[i] for i in indices])
             pos_batches = _split_list_in_batches(input_list=pos_triples, batch_size=num_positives)
-            pos_triples_tensor = torch.tensor(pos_triples, device=self.device)
+            labels_batches = _split_list_in_batches(input_list=labels_list, batch_size=num_positives)
+            # pos_triples_tensor = torch.tensor(pos_triples, device=self.device)
             current_epoch_loss = 0.
 
-            for i, pos_batch in enumerate(pos_batches):
+            for i, (pos_batch, labels_batch) in enumerate(zip(pos_batches, labels_batches)):
                 # TODO: Implement helper functions for different negative sampling approaches
                 current_batch_size = len(pos_batch)
 
-                # batch_subjs, batch_relations, batch_objs = slice_triples(pos_batch)
-
-                # num_subj_corrupt = len(pos_batch) // 2
-                # num_obj_corrupt = len(pos_batch) - num_subj_corrupt
                 pos_batch = torch.tensor(pos_batch, dtype=torch.long, device=self.device)
 
-                # corrupted_subj_indices = np.random.choice(np.arange(0, self.num_entities), size=num_subj_corrupt)
-                # corrupted_subjects = np.reshape(all_entities[corrupted_subj_indices], newshape=(-1, 1))
-                # subject_based_corrupted_triples = np.concatenate(
-                #     [corrupted_subjects, batch_relations[:num_subj_corrupt], batch_objs[:num_subj_corrupt]], axis=1)
-                #
-                # corrupted_obj_indices = np.random.choice(np.arange(0, self.num_entities), size=num_obj_corrupt)
-                # corrupted_objects = np.reshape(all_entities[corrupted_obj_indices], newshape=(-1, 1))
-                #
-                # object_based_corrupted_triples = np.concatenate(
-                #     [batch_subjs[num_subj_corrupt:], batch_relations[num_subj_corrupt:], corrupted_objects], axis=1)
-                #
-                # neg_batch = np.concatenate([subject_based_corrupted_triples, object_based_corrupted_triples], axis=0)
-                #
-                # neg_batch = torch.tensor(neg_batch, dtype=torch.long, device=self.device)
-
-                # Recall that torch *accumulates* gradients. Before passing in a
-                # new instance, you need to zero out the gradients from the old instance
-                # TODO: Check time improvement when precalculating all triple combinations
-
-                match_on_subject = pos_triples_tensor[:, 0:1] == pos_batch[:, 0:1][:, None]
-                match_on_relation = pos_triples_tensor[:, 1:2] == pos_batch[:, 1:2][:, None]
-                match_index = (match_on_subject & match_on_relation).squeeze()
-
-                labels = torch.zeros((current_batch_size, self.num_entities), device=self.device)
-
-                object_numbers = pos_triples_tensor[:, 2:3]
-
-                for i in range(current_batch_size):
-                    objects = object_numbers[match_index[i]]
-                    labels[i, objects] = 1
-
                 self.optimizer.zero_grad()
-                loss = self(pos_batch, labels)
+
+                loss = self(pos_batch, labels_batch)
                 current_epoch_loss += (loss.item() * current_batch_size * self.entity_embeddings.num_embeddings)
 
                 loss.backward()
                 self.optimizer.step()
 
-            # log.info(f"Epoch {str(epoch)} took {str(round(stop - start))} seconds \n")
             # Track epoch loss
             previous_loss = epoch_loss
             epoch_loss = current_epoch_loss / (len(pos_triples) * self.entity_embeddings.num_embeddings)

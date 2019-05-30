@@ -63,49 +63,40 @@ def update_multiple_hits_at_k(
 def _filter_corrupted_triples(
         pos_triple,
         subject_batch,
-        relation_batch,
         object_batch,
+        device,
         all_pos_triples,
 ):
-    # What does this function do?
-    # TODO: Check if it is correct and how much slower it is
     subject = pos_triple[0:1]
     relation = pos_triple[1:2]
     object = pos_triple[2:3]
 
-    subject_filter = all_pos_triples[:,0:1] == subject.detach().cpu().numpy()
-    relation_filter = all_pos_triples[:, 1:2] == relation.detach().cpu().numpy()
-    object_filter = all_pos_triples[:, 2:3] == object.detach().cpu().numpy()
+    subject_filter = all_pos_triples[:,0:1] == subject
+    relation_filter = all_pos_triples[:, 1:2] == relation
+    object_filter = all_pos_triples[:, 2:3] == object
 
     # Short objects batch list
     filter = (subject_filter & relation_filter)
     objects_in_triples = all_pos_triples[:, 2:3][filter]
-    mask = np.isin(object_batch.detach().cpu().numpy(), objects_in_triples, invert=True)
-    # if mask.sum() == 0:
-    #     raise Exception("User selected filtered metric computation, but all corrupted triples exists"
-    #                     "also as positive triples.")
-    object_batch = object_batch[mask]
+    object_batch[objects_in_triples] = False
 
     # Short subjects batch list
     filter = (object_filter & relation_filter)
     subjects_in_triples = all_pos_triples[:, 0:1][filter]
-    mask = np.isin(subject_batch.detach().cpu().numpy(), subjects_in_triples, invert=True)
-    subject_batch = subject_batch[mask]
-    # The relation batch has to have the same size as the subject batch
-    relation_batch = relation_batch[mask]
+    subject_batch[subjects_in_triples] = False
 
+    # TODO: Create warning when all triples will be filtered
     # if mask.size == 0:
     #     raise Exception("User selected filtered metric computation, but all corrupted triples exists"
     #                     "also as positive triples.")
 
-    return subject_batch, relation_batch, object_batch
+    return subject_batch, object_batch
 
 
 def _compute_filtered_rank(
         kg_embedding_model,
         pos_triple,
         subject_batch,
-        relation_batch,
         object_batch,
         device,
         all_pos_triples,
@@ -119,11 +110,11 @@ def _compute_filtered_rank(
     :param device:
     :param all_pos_triples_hashed:
     """
-    subject_batch, relation_batch, object_batch = _filter_corrupted_triples(
+    subject_batch, object_batch = _filter_corrupted_triples(
         pos_triple=pos_triple,
         subject_batch = subject_batch,
-        relation_batch = relation_batch,
         object_batch = object_batch,
+        device=device,
         all_pos_triples=all_pos_triples,
     )
 
@@ -131,7 +122,6 @@ def _compute_filtered_rank(
         kg_embedding_model=kg_embedding_model,
         pos_triple=pos_triple,
         subject_batch=subject_batch,
-        relation_batch=relation_batch,
         object_batch=object_batch,
         device=device,
         all_pos_triples=all_pos_triples,
@@ -142,7 +132,6 @@ def _compute_rank(
         kg_embedding_model,
         pos_triple,
         subject_batch,
-        relation_batch,
         object_batch,
         device,
         all_pos_triples,
@@ -160,27 +149,28 @@ def _compute_rank(
     relation = pos_triple[1:2]
     object = pos_triple[2:3]
 
-    scores_of_corrupted_subjects = kg_embedding_model.predict_for_ranking(subject_batch, relation_batch, object)
-    scores_of_corrupted_objects = kg_embedding_model.predict_for_ranking(subject, relation, object_batch)
+    inverse_triple = torch.cat((object,
+                                relation + kg_embedding_model.inverse_model * kg_embedding_model.num_relations //2,
+                                subject))
 
-    score_of_positive = kg_embedding_model.predict(pos_triple.reshape(-1,3))
+    scores_of_corrupted_subjects = kg_embedding_model.predict_for_ranking(object,
+                                                                          relation + kg_embedding_model.inverse_model *
+                                                                          kg_embedding_model.num_relations // 2)
 
-    rank_of_positive_subject_based = scores_of_corrupted_subjects.shape[0] - \
-                                     (scores_of_corrupted_subjects <= score_of_positive).sum() + 1
+    score_of_positive_subject = scores_of_corrupted_subjects[subject]
+    scores_of_corrupted_subjects = scores_of_corrupted_subjects[subject_batch]
 
-    rank_of_positive_object_based = scores_of_corrupted_objects.shape[0] - \
-                                    (scores_of_corrupted_objects <= score_of_positive).sum() + 1
+    scores_of_corrupted_objects = kg_embedding_model.predict_for_ranking(subject, relation)
+    score_of_positive_object = scores_of_corrupted_objects[object]
+    scores_of_corrupted_objects = scores_of_corrupted_objects[object_batch]
 
+    rank_of_positive_subject_based = (scores_of_corrupted_subjects > score_of_positive_subject).sum() + 1
 
-    if (rank_of_positive_object_based > 1000) or (rank_of_positive_subject_based > 1000):
-        return (
-            rank_of_positive_subject_based.detach().cpu().numpy(),
-            rank_of_positive_object_based.detach().cpu().numpy(), pos_triple
-        )
+    rank_of_positive_object_based = (scores_of_corrupted_objects > score_of_positive_object).sum() + 1
 
     return (
         rank_of_positive_subject_based.detach().cpu().numpy(),
-        rank_of_positive_object_based.detach().cpu().numpy(), None
+        rank_of_positive_object_based.detach().cpu().numpy(),
     )
 
 
@@ -189,6 +179,7 @@ class MetricResults:
     """Results from computing metrics."""
 
     mean_rank: float
+    mean_reciprocal_rank: float
     hits_at_k: Dict[int, float]
 
 
@@ -227,6 +218,7 @@ def compute_metric_results(
     kg_embedding_model = kg_embedding_model.to(device)
 
     all_pos_triples = np.concatenate([mapped_train_triples, mapped_test_triples], axis=0)
+    all_pos_triples = torch.tensor(all_pos_triples, device=device)
     all_entities = torch.arange(kg_embedding_model.num_entities, device=device)
 
     compute_rank_fct: Callable[..., Tuple[int, int]] = (
@@ -246,28 +238,21 @@ def compute_metric_results(
 
     for pos_triple in mapped_test_triples:
         subject = pos_triple[0:1]
-        relation = pos_triple[1:2]
         object = pos_triple[2:3]
 
-        subject_batch = all_entities[all_entities != subject]
-        relation_batch = torch.repeat_interleave(relation, kg_embedding_model.num_entities-1)
-        object_batch = all_entities[all_entities != object]
+        subject_batch = all_entities != subject
+        object_batch = all_entities != object
 
-        rank_of_positive_subject_based, rank_of_positive_object_based, weird_triple = compute_rank_fct(
+        rank_of_positive_subject_based, rank_of_positive_object_based = compute_rank_fct(
             kg_embedding_model=kg_embedding_model,
             pos_triple=pos_triple,
             subject_batch=subject_batch,
-            relation_batch=relation_batch,
             object_batch=object_batch,
             device=device,
             all_pos_triples=all_pos_triples,
         )
         # log.info(f"Calculating scores took {timeit.default_timer() - start:.3f} seconds")
 
-        if weird_triple is not None:
-            weird_triples.append(weird_triple)
-            if len(weird_triples) % 100 == 0:
-                print('Let me have a look')
         ranks.append(rank_of_positive_subject_based)
         ranks.append(rank_of_positive_object_based)
         ranks_of_positive_objects_based.append(rank_of_positive_object_based)
@@ -282,6 +267,7 @@ def compute_metric_results(
     )
 
     mean_rank = float(np.mean(ranks))
+    mean_reciprocal_rank = float((1/np.vstack(ranks)).mean())
     hits_at_k: Dict[int, float] = {
         k: np.mean(values)
         for k, values in hits_at_k_values.items()
@@ -292,5 +278,6 @@ def compute_metric_results(
 
     return MetricResults(
         mean_rank=mean_rank,
+        mean_reciprocal_rank=mean_reciprocal_rank,
         hits_at_k=hits_at_k,
     )

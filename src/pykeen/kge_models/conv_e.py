@@ -12,6 +12,7 @@ from torch.nn.init import xavier_normal_
 from pykeen.kge_models.base import BaseModule, slice_triples
 from typing import Dict, Optional
 import torch.optim as optim
+import numpy as np
 from functools import lru_cache
 
 from pykeen.constants import (
@@ -56,8 +57,8 @@ class ConvE(BaseModule):
         self.inp_drop = torch.nn.Dropout(conv_e_input_dropout)
         self.hidden_drop = torch.nn.Dropout(conv_e_output_dropout)
         self.feature_map_drop = torch.nn.Dropout2d(conv_e_feature_map_dropout)
-        # self.loss = torch.nn.BCELoss()
-        self.loss = torch.nn.BCEWithLogitsLoss()
+        self.loss = torch.nn.BCELoss()
+        # self.loss = torch.nn.BCEWithLogitsLoss()
 
         self.conv1 = torch.nn.Conv2d(
             in_channels=ConvE_input_channels,
@@ -80,6 +81,11 @@ class ConvE(BaseModule):
 
         # Default optimizer for ConvE
         self.default_optimizer = optim.Adam
+
+        # Attribute for inverse models that model additional reverse left side prediction embeddings
+        self.inverse_model = False
+
+        self.label_smoothing = None
 
     def _init_embeddings(self):
         super()._init_embeddings()
@@ -120,93 +126,59 @@ class ConvE(BaseModule):
 
         return x
 
-    def predict_right(self, triple):
+    def predict_objects(self, subject, relation):
+        subject = self.entity_label_to_id[subject]
+        relation = self.relation_label_to_id[relation]
+        scores = self.predict_for_ranking(torch.tensor([subject], device=self.device),
+                                          torch.tensor([relation], device=self.device)).detach().cpu().numpy()
+        results = np.vstack((list(self.entity_label_to_id.keys()), scores)).T
+        return results[scores.argsort()[::-1]]
+
+    def predict_subjects(self, object, relation):
+        object = self.entity_label_to_id[object]
+        relation = self.relation_label_to_id[relation]
+        # If the model was trained on inverse relations, the corresponding embeddings have to be used
+        if self.inverse_model:
+            relation += self.num_relations // 2
+        scores = self.predict_for_ranking(torch.tensor([object], device=self.device),
+                                          torch.tensor([relation], device=self.device)).detach().cpu().numpy()
+        results = np.vstack((list(self.entity_label_to_id.keys()), scores)).T
+        return results[scores.argsort()[::-1]]
+
+    def predict_for_ranking(self, entities, relations):
         """
-        Score all possible objects except the object of the true triple
-        :param triple:
-        :return:
-        """
-        subject = triple[0:1]
-        relation = triple[1:2]
-        object = triple[2:3]
-
-        all_entities = torch.arange(self.num_entities, device=self.device)
-
-        object_batch = all_entities[all_entities!=object]
-
-        candidate_object_embeddings = self.entity_embeddings(object_batch)
-
-        x = self.forward_conv(subject, relation)
-        x = torch.mm(x, candidate_object_embeddings.transpose(1, 0)).flatten()
-
-        scores = torch.sigmoid(x)
-
-        # Class 0 represents false fact and class 1 represents true fact
-
-        return scores
-
-    def predict_left(self, triple):
-        """
-        Score all possible subjects except the subject of the true triple
-        :param triple:
-        :return:
-        """
-        # triples = torch.tensor(triples, dtype=torch.long, device=self.device)
-        subject = triple[0:1]
-        relation = triple[1:2]
-        object = triple[2:3]
-
-        all_entities = torch.arange(self.num_entities, device=self.device)
-
-        subject_batch = all_entities[all_entities!=subject]
-        relation_batch = torch.repeat_interleave(relation, self.num_entities)
-
-        candidate_object_embeddings = self.entity_embeddings(object)
-
-        x = self.forward_conv(subject_batch, relation_batch)
-        x = torch.mm(x, candidate_object_embeddings.transpose(1, 0)).flatten()
-
-        scores = torch.sigmoid(x)
-
-        # Class 0 represents false fact and class 1 represents true fact
-
-        return scores
-
-    def predict_for_ranking(self, subject_batch, relation_batch, object_batch):
-        """
-        Score all possible subjects except the subject of the true triple
+        Score all possible right side entities
         :param triple:
         :return:
         """
 
-        candidate_object_embeddings = self.entity_embeddings(object_batch)
+        x = self.forward_conv(entities, relations)
+        x = torch.mm(x, self.entity_embeddings.weight.transpose(1,0)).flatten()
 
-        x = self.forward_conv(subject_batch, relation_batch)
-        x = torch.mm(x, candidate_object_embeddings.transpose(1, 0)).flatten()
+        x += self.b.expand_as(x)
 
         scores = torch.sigmoid(x)
-
-        # Class 0 represents false fact and class 1 represents true fact
 
         return scores
 
 
-    def predict(self, triples):
+    def score_triple(self, triple):
         # Check if the model has been fitted yet.
         if self.entity_embeddings is None:
             print('The model has not been fitted yet. Predictions are based on randomly initialized embeddings.')
             self._init_embeddings()
 
-        # triples = torch.tensor(triples, dtype=torch.long, device=self.device)
-        batch_size = triples.shape[0]
-        subject_batch = triples[:, 0:1]
-        relation_batch = triples[:, 1:2]
-        object_batch = triples[:, 2:3].view(-1)
+        # triple = torch.tensor(triple, dtype=torch.long, device=self.device)
+        batch_size = triple.shape[0]
+        subject = triple[:, 0:1]
+        relation = triple[:, 1:2]
+        object = triple[:, 2:3].view(-1)
 
-        candidate_object_embeddings = self.entity_embeddings(object_batch)
+        candidate_object_embeddings = self.entity_embeddings(object)
 
-        x = self.forward_conv(subject_batch, relation_batch)
+        x = self.forward_conv(subject, relation)
         x = torch.sum(torch.mul(x.flatten(), candidate_object_embeddings.flatten()).reshape(batch_size, -1), dim=1)
+        x += self.b[object]
 
         scores = torch.sigmoid(x)
 
@@ -222,16 +194,20 @@ class ConvE(BaseModule):
         relations = batch[:, 1:2]
         # tails = batch[:, 2:3]
 
-        # TODO: Make smart unpacking of all values for labels
-        # labels_full = torch.zeros((batch_size, self.num_entities), device=self.device)
-        # for i in range(batch_size):
-        #     labels_full[i, labels[i]] = 1
+        labels_full = torch.zeros((batch_size, self.num_entities), device=self.device)
+        for i in range(batch_size):
+            labels_full[i, labels[i]] = 1
+
+        if self.label_smoothing is not None:
+            labels_full = labels_full * (1-self.label_smoothing) + self.label_smoothing / self.num_entities
 
         x = self.forward_conv(heads, relations)
 
         x = torch.mm(x, self.entity_embeddings.weight.transpose(1,0))
 
-        predictions = x
+        x += self.b.expand_as(x)
 
-        loss = self.loss(predictions, labels)
+        predictions = torch.sigmoid(x)
+
+        loss = self.loss(predictions, labels_full)
         return loss
