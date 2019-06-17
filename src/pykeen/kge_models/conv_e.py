@@ -192,7 +192,7 @@ class ConvE(BaseModule):
 
         heads = batch[:, 0:1]
         relations = batch[:, 1:2]
-        # tails = batch[:, 2:3]
+        scores = self.predict_for_ranking(entities=heads, relations=relations)
 
         labels_full = torch.zeros((batch_size, self.num_entities), device=self.device)
         for i in range(batch_size):
@@ -201,13 +201,5 @@ class ConvE(BaseModule):
         if self.label_smoothing is not None:
             labels_full = labels_full * (1-self.label_smoothing) + self.label_smoothing / self.num_entities
 
-        x = self.forward_conv(heads, relations)
-
-        x = torch.mm(x, self.entity_embeddings.weight.transpose(1,0))
-
-        x += self.b.expand_as(x)
-
-        predictions = torch.sigmoid(x)
-
-        loss = self.loss(predictions, labels_full)
+        loss = self.loss(scores, labels_full)
         return loss
